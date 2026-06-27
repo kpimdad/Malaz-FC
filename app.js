@@ -584,14 +584,16 @@ function renderMatchCard(m) {
   let pickStrip = '';
   if (completed) {
     const pts = pred?.pointsAwarded;
+    const penTeam = pred?.penWinner === 'A' ? m.teamA : pred?.penWinner === 'B' ? m.teamB : null;
     pickStrip = `<div class="fm-pick-strip">
-      ${pred ? `<span class="fm-pick-label">Your pick</span><span class="fm-pick-score">${pred.predictedA}–${pred.predictedB}</span>` : '<span class="fm-pick-label text-muted">No pick made</span>'}
+      ${pred ? `<span class="fm-pick-label">Your pick</span><span class="fm-pick-score">${pred.predictedA}–${pred.predictedB}${penTeam ? ` <span class="fm-pen-tag">🥅 ${penTeam}</span>` : ''}</span>` : '<span class="fm-pick-label text-muted">No pick made</span>'}
       ${pts != null ? ptsBadge(pts) : (!pred ? '' : '<span class="fm-pts none">Pending</span>')}
     </div>`;
   } else if (locked) {
+    const penTeam = pred?.penWinner === 'A' ? m.teamA : pred?.penWinner === 'B' ? m.teamB : null;
     pickStrip = `<div class="fm-pick-strip locked">
       🔒 Locked
-      ${pred ? `<span class="fm-pick-score">${pred.predictedA}–${pred.predictedB}</span><span style="color:var(--grass);font-size:0.8rem">✓</span>` : '<span style="color:var(--muted);font-size:0.8rem">No pick</span>'}
+      ${pred ? `<span class="fm-pick-score">${pred.predictedA}–${pred.predictedB}${penTeam ? ` <span class="fm-pen-tag">🥅 ${penTeam}</span>` : ''}</span><span style="color:var(--grass);font-size:0.8rem">✓</span>` : '<span style="color:var(--muted);font-size:0.8rem">No pick</span>'}
     </div>`;
   } else {
     const urgentClass = countdown && !countdown.includes('d') && !countdown.includes('h') ? 'urgent' : '';
@@ -990,8 +992,10 @@ function renderMyPredictions() {
     if (!p) return;
     if (!groups[m.matchDay]) groups[m.matchDay] = [];
     groups[m.matchDay].push({ m, p });
-    if (p.pointsAwarded === PTS_EXACT)  { totalPts += PTS_EXACT;  exact++;  }
-    else if (p.pointsAwarded === PTS_RESULT) { totalPts += PTS_RESULT; winner++; }
+    const pts = p.pointsAwarded ?? 0;
+    if (pts > 0) totalPts += pts;
+    if (pts >= PTS_EXACT) exact++;           // 15pts exact, 20pts exact+pen
+    else if (pts === PTS_RESULT || pts === PTS_RESULT + PTS_PEN) winner++;
   });
 
   const scored = Object.values(STATE.predictions).filter(p => p.pointsAwarded != null);
@@ -1016,9 +1020,13 @@ function renderMyPredictions() {
       <div class="matchday-label">${day}</div>
       ${items.map(({ m, p }) => {
         const pts = p.pointsAwarded;
-        const ptsCls   = pts === PTS_EXACT ? 'exact' : pts === PTS_RESULT ? 'winner' : pts === 0 ? 'wrong' : 'none';
-        const ptsLabel = pts === PTS_EXACT ? `+${PTS_EXACT}` : pts === PTS_RESULT ? `+${PTS_RESULT}` : pts === 0 ? '0' : '–';
-        const result = m.resultA != null ? `${m.resultA} – ${m.resultB}` : null;
+        const ptsCls   = pts >= PTS_EXACT ? 'exact' : (pts === PTS_RESULT || pts === PTS_RESULT + PTS_PEN) ? 'winner' : pts === 0 ? 'wrong' : 'none';
+        const ptsLabel = pts != null ? `+${pts}` : '–';
+        const result   = m.resultA != null ? `${m.resultA} – ${m.resultB}` : null;
+        // Penalty labels
+        const myPenTeam  = p.penWinner === 'A' ? m.teamA : p.penWinner === 'B' ? m.teamB : null;
+        const resPenTeam = m.penWinner === 'A' ? m.teamA : m.penWinner === 'B' ? m.teamB : null;
+        const showPenRow = myPenTeam || resPenTeam;
         return `<div class="pred-fm-card">
           <div class="pred-fm-row">
             <div class="pred-fm-team">
@@ -1037,6 +1045,10 @@ function renderMyPredictions() {
               <span class="pred-fm-name">${m.teamB}</span>
             </div>
           </div>
+          ${showPenRow ? `<div class="pred-fm-pen-row">
+            ${myPenTeam ? `<span class="pred-fm-pen-pick">🥅 My pen pick: <strong>${myPenTeam}</strong></span>` : ''}
+            ${resPenTeam ? `<span class="pred-fm-pen-result ${myPenTeam === resPenTeam ? 'correct' : 'wrong'}">Actual: <strong>${resPenTeam}</strong></span>` : ''}
+          </div>` : ''}
           <div class="pred-fm-pts ${ptsCls}">${ptsLabel} pts</div>
         </div>`;
       }).join('')}
