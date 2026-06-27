@@ -1,0 +1,1515 @@
+/* ═══════════════════════════════════════════════════════
+   MALAZ FC WC 2026 — app.js
+   Knockout stage · Firebase Firestore · No build step
+   Scoring: 25 pts exact · 10 pts correct result · 0 wrong
+   Bonus:  +50 tournament winner · +30 top scoring team
+   ═══════════════════════════════════════════════════════ */
+
+'use strict';
+
+const { initializeApp }                                   = window.firebaseApp;
+const { getFirestore, collection, doc, getDoc, getDocs,
+        setDoc, updateDoc, query, where, orderBy,
+        serverTimestamp, writeBatch }                     = window.firebaseFirestore;
+
+// ── Subdivision flag fix ────────────────────────────────
+const SUBDIVISION_FLAGS = {
+  'Scotland': '\u{1F3F4}\u{E0067}\u{E0062}\u{E0073}\u{E0063}\u{E0074}\u{E007F}',
+  'England':  '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}',
+  'Wales':    '\u{1F3F4}\u{E0067}\u{E0062}\u{E0077}\u{E006C}\u{E0073}\u{E007F}',
+};
+function getFlag(teamName, fallback) {
+  return SUBDIVISION_FLAGS[teamName] || fallback || '🏳️';
+}
+
+// ── Scoring constants ───────────────────────────────────
+const PTS_EXACT   = 25;  // exact score
+const PTS_RESULT  = 10;  // correct result / winner only
+const PTS_CHAMP   = 50;  // tournament winner bonus
+const PTS_TOPTEAM = 30;  // top scoring team bonus
+
+// ── App State ──────────────────────────────────────────
+const STATE = {
+  db: null,
+  session: null,
+  matches: [],
+  predictions: {},
+  users: [],
+  countdownTimers: [],
+  currentPredictMatch: null,
+};
+
+// ── Rank movement helpers ──────────────────────────────
+function loadPrevRanks() {
+  try {
+    const data = JSON.parse(localStorage.getItem('mfc2026_rankData') || '{}');
+    return data.prevRanks || {};
+  } catch { return {}; }
+}
+function saveRankSnapshot(rankedUsers, currentMatchCount) {
+  try {
+    const stored = JSON.parse(localStorage.getItem('mfc2026_rankData') || '{}');
+    const prevMatchCount = stored.prevMatchCount || 0;
+    const newCurrentRanks = {};
+    rankedUsers.forEach((u, i) => { newCurrentRanks[u.id] = i + 1; });
+    if (currentMatchCount > prevMatchCount) {
+      localStorage.setItem('mfc2026_rankData', JSON.stringify({
+        prevRanks:      stored.currentRanks || {},
+        currentRanks:   newCurrentRanks,
+        prevMatchCount: currentMatchCount,
+      }));
+    } else {
+      localStorage.setItem('mfc2026_rankData', JSON.stringify({
+        prevRanks:      stored.prevRanks || {},
+        currentRanks:   newCurrentRanks,
+        prevMatchCount,
+      }));
+    }
+  } catch {}
+}
+
+// ── Session ────────────────────────────────────────────
+const SESSION_KEY = 'mfc2026_session';
+const SESSION_TTL = 7 * 24 * 60 * 60 * 1000;
+
+function saveSession(userId, nickname, isAdmin) {
+  const session = { userId, nickname, isAdmin, expires: Date.now() + SESSION_TTL };
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  STATE.session = { userId, nickname, isAdmin };
+}
+function loadSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SESSION_KEY));
+    if (!s || s.expires < Date.now()) { localStorage.removeItem(SESSION_KEY); return null; }
+    return s;
+  } catch { return null; }
+}
+function clearSession() { localStorage.removeItem(SESSION_KEY); STATE.session = null; }
+
+// ── PIN Hashing ────────────────────────────────────────
+async function hashPin(pin) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pin));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Toast ──────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const icons = { success: '✅', error: '❌', info: 'ℹ️', lock: '🔒' };
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<span>${icons[type] || icons.info}</span> ${msg}`;
+  document.getElementById('toast-container').appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── View Router ────────────────────────────────────────
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id)?.classList.add('active');
+  document.querySelectorAll('.bnav-btn[data-view]').forEach(b =>
+    b.classList.toggle('active', b.dataset.view === id));
+  const isLogin = id === 'view-login';
+  document.getElementById('app-nav').style.display    = isLogin ? 'none' : 'flex';
+  document.getElementById('bottom-nav').style.display = isLogin ? 'none' : 'flex';
+  window.scrollTo({ top: 0, behavior: 'instant' });
+}
+
+// ── Time Helpers ───────────────────────────────────────
+function matchMetaLabel(m) { return m.matchDay; }
+
+function formatKickoff(isoString) {
+  return new Date(isoString).toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+  });
+}
+
+function timeUntil(msOrIso) {
+  const ms   = typeof msOrIso === 'number' ? msOrIso : new Date(msOrIso).getTime();
+  const diff = ms - Date.now();
+  if (diff <= 0) return null;
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  if (h > 48) return `${Math.floor(h / 24)}d ${h % 24}h`;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function getLockMs(match) { return new Date(match.kickoffUTC).getTime() - 5 * 60 * 1000; }
+function isLocked(match)  { return getLockMs(match) <= Date.now(); }
+function isLastMinuteWindow(match) {
+  const lockMs = getLockMs(match), now = Date.now();
+  return now >= lockMs - 30 * 60 * 1000 && now < lockMs;
+}
+
+// ── Photo resize → base64 ─────────────────────────────
+function resizeImageToBase64(file, size = 80) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('FileReader failed'));
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Image decode failed'));
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = size; canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          const min = Math.min(img.width, img.height);
+          const sx  = (img.width  - min) / 2;
+          const sy  = (img.height - min) / 2;
+          ctx.drawImage(img, sx, sy, min, min, 0, 0, size, size);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        } catch (err) { reject(err); }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// ── Avatar ─────────────────────────────────────────────
+const AVATAR_COLORS = [
+  '#E74C3C','#3498DB','#2ECC71','#F39C12',
+  '#9B59B6','#1ABC9C','#E67E22','#E91E63',
+  '#00BCD4','#FF5722','#607D8B','#795548'
+];
+function getAvatarHTML(user, size = 36) {
+  const name = user.nickname || '?';
+  const idx  = name.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length;
+  const bg   = AVATAR_COLORS[idx];
+  const initials = name.slice(0, 2).toUpperCase();
+  const style = `width:${size}px;height:${size}px;font-size:${Math.floor(size * 0.38)}px;line-height:${size}px;`;
+  if (user.photoURL) {
+    return `<img class="avatar" src="${user.photoURL}" alt="${name}" style="${style}"
+      onerror="this.outerHTML='<div class=\\'avatar\\' style=\\'background:${bg};${style}\\'>${initials}</div>'">`;
+  }
+  return `<div class="avatar" style="background:${bg};${style}">${initials}</div>`;
+}
+
+// ── Scoring ────────────────────────────────────────────
+function calculatePoints(pA, pB, rA, rB) {
+  if (Math.sign(pA - pB) !== Math.sign(rA - rB)) return 0;  // wrong result
+  if (pA === rA && pB === rB) return PTS_EXACT;               // exact score
+  return PTS_RESULT;                                           // correct result only
+}
+
+// ── Firestore ──────────────────────────────────────────
+async function fetchMatches() {
+  const snap = await getDocs(collection(STATE.db, 'matches'));
+  const fs = {};
+  snap.forEach(d => { fs[d.id] = d.data(); });
+  STATE.matches = MATCHES.map(m => ({
+    ...m,
+    teamA:   fs[m.matchId]?.teamA   ?? m.teamA,
+    teamB:   fs[m.matchId]?.teamB   ?? m.teamB,
+    flagA:   fs[m.matchId]?.flagA   ?? m.flagA,
+    flagB:   fs[m.matchId]?.flagB   ?? m.flagB,
+    resultA: fs[m.matchId]?.resultA ?? null,
+    resultB: fs[m.matchId]?.resultB ?? null,
+    status:  fs[m.matchId]?.status  ?? m.status,
+  }));
+}
+
+async function fetchMyPredictions() {
+  if (!STATE.session) return;
+  const snap = await getDocs(query(
+    collection(STATE.db, 'predictions'),
+    where('userId', '==', STATE.session.userId)
+  ));
+  STATE.predictions = {};
+  snap.forEach(d => { const p = d.data(); STATE.predictions[p.matchId] = p; });
+}
+
+async function fetchUsers() {
+  const snap = await getDocs(collection(STATE.db, 'users'));
+  STATE.users = [];
+  snap.forEach(d => {
+    if (!d.data().disabled && !d.data().isAdminAccount) STATE.users.push({ id: d.id, ...d.data() });
+  });
+  STATE.users.sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
+}
+
+// ═══════════════════════════════════════════════════════
+// LOGIN VIEW
+// ═══════════════════════════════════════════════════════
+async function initLoginView() {
+  const snap = await getDocs(collection(STATE.db, 'users'));
+  const sel  = document.getElementById('login-user-select');
+  const userPinMap = {};
+  sel.innerHTML = '<option value="">— Who are you? —</option>';
+  snap.forEach(d => {
+    if (d.data().disabled || d.data().isAdminAccount) return;
+    const o = document.createElement('option');
+    o.value = d.id; o.textContent = d.data().nickname;
+    sel.appendChild(o);
+    userPinMap[d.id] = d.data().pinHash || '';
+  });
+
+  sel.addEventListener('change', () => {
+    const uid = sel.value;
+    const confirmGroup = document.getElementById('login-pin-confirm-group');
+    const pinLabel     = document.getElementById('login-pin-label');
+    const firstMsg     = document.getElementById('login-firsttime-msg');
+    const isNew = uid && !userPinMap[uid];
+    pinLabel.textContent = isNew ? 'Choose a 4-Digit PIN' : '4-Digit PIN';
+    confirmGroup.style.display = isNew ? 'block' : 'none';
+    firstMsg.style.display     = isNew ? 'block'  : 'none';
+    document.getElementById('login-error').classList.remove('show');
+    document.getElementById('login-pin').value = '';
+    if (uid) document.getElementById('login-pin').focus();
+  });
+}
+
+async function handleLogin() {
+  const userId = document.getElementById('login-user-select').value;
+  const pin    = document.getElementById('login-pin').value.trim();
+  const errEl  = document.getElementById('login-error');
+  const btn    = document.getElementById('login-btn');
+  errEl.classList.remove('show');
+  if (!userId) { errEl.textContent = 'Select your name first.'; errEl.classList.add('show'); return; }
+  if (!/^\d{4}$/.test(pin)) { errEl.textContent = 'PIN must be exactly 4 digits.'; errEl.classList.add('show'); return; }
+  btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const snap = await getDoc(doc(STATE.db, 'users', userId));
+    if (!snap.exists()) throw new Error('not found');
+    const user = snap.data();
+    if (!user.pinHash) {
+      const confirm = document.getElementById('login-pin-confirm').value.trim();
+      if (pin !== confirm) {
+        errEl.textContent = 'PINs do not match — try again.'; errEl.classList.add('show');
+        btn.disabled = false; btn.textContent = 'Enter ⚽'; return;
+      }
+      await updateDoc(doc(STATE.db, 'users', userId), { pinHash: await hashPin(pin) });
+    } else {
+      if (await hashPin(pin) !== user.pinHash) throw new Error('wrong pin');
+    }
+    saveSession(userId, user.nickname, user.isAdmin || false);
+    document.getElementById('login-pin').value = '';
+    document.getElementById('login-pin-confirm').value = '';
+    await initApp();
+  } catch {
+    errEl.textContent = 'Wrong PIN — try again.'; errEl.classList.add('show');
+    document.getElementById('login-pin').value = '';
+    document.getElementById('login-pin').focus();
+  }
+  btn.disabled = false; btn.textContent = 'Enter ⚽';
+}
+
+// ── Admin login (tap trophy ×5) ────────────────────────
+let _adminTapCount = 0, _adminTapTimer = null;
+function onTrophyTap() {
+  _adminTapCount++;
+  clearTimeout(_adminTapTimer);
+  _adminTapTimer = setTimeout(() => { _adminTapCount = 0; }, 2000);
+  if (_adminTapCount >= 5) {
+    _adminTapCount = 0;
+    document.getElementById('admin-login-modal').style.display = 'flex';
+    document.getElementById('admin-password-input').focus();
+  }
+}
+
+async function handleAdminLogin() {
+  const pw  = document.getElementById('admin-password-input').value;
+  const err = document.getElementById('admin-login-error');
+  err.style.display = 'none';
+  if (!pw) return;
+  try {
+    const snap = await getDocs(collection(STATE.db, 'users'));
+    let adminDoc = null;
+    snap.forEach(d => { if (d.data().isAdminAccount) adminDoc = { id: d.id, ...d.data() }; });
+    if (!adminDoc) { err.textContent = 'No admin account found.'; err.style.display = 'block'; return; }
+    if (await hashPin(pw) !== adminDoc.pinHash) { err.textContent = 'Wrong password.'; err.style.display = 'block'; return; }
+    document.getElementById('admin-login-modal').style.display = 'none';
+    document.getElementById('admin-password-input').value = '';
+    saveSession(adminDoc.id, adminDoc.nickname, true);
+    await initApp();
+  } catch (e) { err.textContent = 'Error: ' + e.message; err.style.display = 'block'; }
+}
+
+// ═══════════════════════════════════════════════════════
+// CHAMPION / TOP SCORING TEAM PICKS
+// ═══════════════════════════════════════════════════════
+// All 32 R32 teams — admin can update TBDs to real names in Firestore
+function getKnownTeams() {
+  return [...new Set(
+    STATE.matches
+      .filter(m => m.stage === 'R32')
+      .flatMap(m => [m.teamA, m.teamB])
+      .filter(t => !t.startsWith('TBD'))
+  )].sort();
+}
+
+function populateTeamSelects() {
+  const teams = getKnownTeams();
+  const opts  = teams.map(t => `<option value="${t}">${t}</option>`).join('');
+  const blank = '<option value="">— Pick a team —</option>';
+  document.getElementById('champion-select').innerHTML    = blank + opts;
+  document.getElementById('top-scorer-select').innerHTML  = blank + opts;
+}
+
+async function openChampionModal(userData = null) {
+  populateTeamSelects();
+  if (userData?.championPick)   document.getElementById('champion-select').value    = userData.championPick;
+  if (userData?.topScorerPick)  document.getElementById('top-scorer-select').value  = userData.topScorerPick;
+  const hasPicks = userData?.championPick && userData?.topScorerPick;
+  document.getElementById('skip-champion-btn').textContent = hasPicks ? 'Close' : 'Skip for now';
+  document.getElementById('champion-modal').style.display = 'flex';
+}
+
+async function saveChampionPick() {
+  const champion  = document.getElementById('champion-select').value;
+  const topScorer = document.getElementById('top-scorer-select').value;
+  if (!champion || !topScorer) { showToast('Pick both a champion and top scoring team', 'error'); return; }
+  if (!STATE.session?.userId)  { showToast('Not logged in', 'error'); return; }
+  const btn = document.getElementById('save-champion-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await setDoc(doc(STATE.db, 'users', STATE.session.userId),
+      { championPick: champion, topScorerPick: topScorer }, { merge: true });
+    showToast(`🏆 ${champion} to win · ⚽ ${topScorer} top scorer!`, 'success');
+    document.getElementById('champion-modal').style.display = 'none';
+  } catch (e) {
+    showToast(`Save failed: ${e?.code || e?.message || String(e)}`, 'error');
+  }
+  btn.disabled = false; btn.textContent = 'Save My Picks';
+}
+
+// ═══════════════════════════════════════════════════════
+// HOME / MATCH FEED — Round navigation
+// ═══════════════════════════════════════════════════════
+const ROUND_ORDER = ['Round of 32','Round of 16','Quarter-Final','Semi-Final','Third Place','Final'];
+const ROUND_LABEL = {
+  'Round of 32':  'R32',
+  'Round of 16':  'R16',
+  'Quarter-Final':'QF',
+  'Semi-Final':   'SF',
+  'Third Place':  '3rd',
+  'Final':        'Final',
+};
+const ROUND_DATES = {
+  'Round of 32':  '28 Jun – 4 Jul',
+  'Round of 16':  '4 – 7 Jul',
+  'Quarter-Final':'9 – 11 Jul',
+  'Semi-Final':   '14 – 15 Jul',
+  'Third Place':  '18 Jul',
+  'Final':        '19 Jul',
+};
+
+let activeRound = '';
+
+async function initHomeView() {
+  await Promise.all([fetchMatches(), fetchMyPredictions()]);
+  buildRoundNav();
+  startCountdownTimers();
+}
+
+function buildRoundNav() {
+  const nav = document.getElementById('date-nav');
+  nav.innerHTML = ROUND_ORDER.map(r => `
+    <button class="date-pill" data-date="${r}">
+      <span class="pill-md">${ROUND_LABEL[r]}</span>
+      <span class="pill-sub">${ROUND_DATES[r]}</span>
+    </button>`).join('');
+
+  nav.querySelectorAll('.date-pill').forEach(btn =>
+    btn.addEventListener('click', () => selectDate(btn.dataset.date)));
+
+  // Auto-select first round with upcoming matches
+  const now = Date.now();
+  const upcomingRound = ROUND_ORDER.find(r =>
+    STATE.matches.some(m => m.matchDay === r && new Date(m.kickoffUTC) > now)
+  );
+  const latestRound = ROUND_ORDER.slice().reverse().find(r =>
+    STATE.matches.some(m => m.matchDay === r)
+  );
+  selectDate(upcomingRound || latestRound || ROUND_ORDER[0]);
+}
+
+function selectDate(round) {
+  activeRound = round;
+  document.querySelectorAll('.date-pill').forEach(b =>
+    b.classList.toggle('active', b.dataset.date === round));
+  const active = document.querySelector(`.date-pill[data-date="${CSS.escape(round)}"]`);
+  active?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+
+  const filtered = STATE.matches
+    .filter(m => m.matchDay === round)
+    .sort((a, b) => new Date(a.kickoffUTC) - new Date(b.kickoffUTC));
+
+  const list = document.getElementById('match-list');
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚽</div><div class="empty-state-text">No matches in this round</div></div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(renderMatchCard).join('');
+  attachCardListeners();
+  renderDeadlineBanner();
+}
+
+function renderMatchCard(m) {
+  const pred      = STATE.predictions[m.matchId];
+  const lockMs    = getLockMs(m);
+  const locked    = lockMs <= Date.now() || m.status === 'locked' || m.status === 'completed';
+  const countdown = timeUntil(lockMs);
+  const lastMin   = !locked && isLastMinuteWindow(m);
+  const completed = m.status === 'completed' && m.resultA !== null;
+  const stageLabel = m.matchDay;
+  const kickoffStr = new Date(m.kickoffUTC).toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+  });
+
+  const centerHTML = completed
+    ? `<div class="fm-center">
+        <div class="fm-score-line">
+          <span class="fm-score">${m.resultA}</span>
+          <span class="fm-dash">–</span>
+          <span class="fm-score">${m.resultB}</span>
+        </div>
+        <div class="fm-status-label">FT</div>
+      </div>`
+    : `<div class="fm-center">
+        <div class="fm-time">${new Date(m.kickoffUTC).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div>
+        <div class="fm-status-label">${locked ? '🔒' : kickoffStr.split(',')[0]}</div>
+      </div>`;
+
+  const ptsCls   = p => p === PTS_EXACT ? 'exact' : p === PTS_RESULT ? 'winner' : p === 0 ? 'wrong' : 'none';
+  const ptsBadge = pts =>
+    pts === PTS_EXACT  ? `<span class="fm-pts exact">+${PTS_EXACT} pts ⚽</span>` :
+    pts === PTS_RESULT ? `<span class="fm-pts winner">+${PTS_RESULT} pts ✓</span>` :
+    pts === 0          ? `<span class="fm-pts wrong">0 pts</span>` : '';
+
+  let pickStrip = '';
+  if (completed) {
+    const pts = pred?.pointsAwarded;
+    pickStrip = `<div class="fm-pick-strip">
+      ${pred ? `<span class="fm-pick-label">Your pick</span><span class="fm-pick-score">${pred.predictedA}–${pred.predictedB}</span>` : '<span class="fm-pick-label text-muted">No pick made</span>'}
+      ${pts != null ? ptsBadge(pts) : (!pred ? '' : '<span class="fm-pts none">Pending</span>')}
+    </div>`;
+  } else if (locked) {
+    pickStrip = `<div class="fm-pick-strip locked">
+      🔒 Locked
+      ${pred ? `<span class="fm-pick-score">${pred.predictedA}–${pred.predictedB}</span><span style="color:var(--grass);font-size:0.8rem">✓</span>` : '<span style="color:var(--muted);font-size:0.8rem">No pick</span>'}
+    </div>`;
+  } else {
+    const urgentClass = countdown && !countdown.includes('d') && !countdown.includes('h') ? 'urgent' : '';
+    const countdownHTML = countdown ? `<span class="fm-countdown ${urgentClass}">${lastMin ? '🔥' : '⏳'} ${countdown}</span>` : '';
+    pickStrip = pred
+      ? `<div class="fm-pick-strip has-pick">
+           <span class="fm-pick-label">Your pick</span>
+           <span class="fm-pick-score">${pred.predictedA}–${pred.predictedB}</span>
+           <button class="fm-btn-edit" data-match="${m.matchId}">Edit</button>
+           ${countdownHTML}
+         </div>`
+      : `<div class="fm-pick-strip predict-cta">
+           <button class="fm-btn-predict" data-match="${m.matchId}">+ Predict</button>
+           ${countdownHTML}
+         </div>`;
+  }
+
+  return `<div class="fm-card" data-stage="${m.stage}" data-match-id="${m.matchId}">
+    <div class="fm-header">${stageLabel} · ${kickoffStr}</div>
+    <div class="fm-body">
+      <div class="fm-team">
+        <span class="fm-flag">${getFlag(m.teamA, m.flagA)}</span>
+        <span class="fm-name">${m.teamA}</span>
+      </div>
+      ${centerHTML}
+      <div class="fm-team right">
+        <span class="fm-flag">${getFlag(m.teamB, m.flagB)}</span>
+        <span class="fm-name">${m.teamB}</span>
+      </div>
+    </div>
+    ${pickStrip}
+  </div>`;
+}
+
+function attachCardListeners() {
+  document.querySelectorAll('.fm-btn-edit, .fm-btn-predict').forEach(btn => {
+    btn.addEventListener('click', e => { e.stopPropagation(); openPredictView(btn.dataset.match); });
+  });
+}
+
+function startCountdownTimers() {
+  STATE.countdownTimers.forEach(clearInterval);
+  STATE.countdownTimers = [];
+  STATE.countdownTimers.push(setInterval(() => {
+    document.querySelectorAll('.fm-countdown').forEach(el => {
+      const card = el.closest('.fm-card');
+      if (!card) return;
+      const m = STATE.matches.find(x => x.matchId === card.dataset.matchId);
+      if (!m) return;
+      const lockMs = getLockMs(m);
+      const t = timeUntil(lockMs);
+      if (!t) { fetchMatches().then(() => selectDate(activeRound)); return; }
+      const urgent  = !t.includes('d') && !t.includes('h');
+      const lastMin = isLastMinuteWindow(m);
+      el.textContent = `${lastMin ? '🔥' : '⏳'} Locks in ${t}`;
+      el.classList.toggle('urgent', urgent);
+    });
+    renderDeadlineBanner();
+  }, 30000));
+}
+
+// ═══════════════════════════════════════════════════════
+// PREDICT VIEW
+// ═══════════════════════════════════════════════════════
+async function openPredictView(matchId) {
+  const m = STATE.matches.find(x => x.matchId === matchId);
+  if (!m) return;
+  STATE.currentPredictMatch = m;
+  const pred   = STATE.predictions[matchId];
+  const locked = isLocked(m) || m.status === 'locked' || m.status === 'completed';
+
+  document.getElementById('predict-meta').textContent    = matchMetaLabel(m);
+  document.getElementById('predict-flag-a').textContent  = getFlag(m.teamA, m.flagA);
+  document.getElementById('predict-flag-b').textContent  = getFlag(m.teamB, m.flagB);
+  document.getElementById('predict-team-a').textContent  = m.teamA;
+  document.getElementById('predict-team-b').textContent  = m.teamB;
+  const koStr = new Date(m.kickoffUTC).toLocaleString('en-GB', {
+    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZoneName: 'short'
+  });
+  document.getElementById('predict-kickoff').textContent = `${koStr} · ${m.venue}`;
+  document.getElementById('picker-flag-a').textContent   = getFlag(m.teamA, m.flagA);
+  document.getElementById('picker-name-a').textContent   = m.teamA;
+  document.getElementById('picker-flag-b').textContent   = getFlag(m.teamB, m.flagB);
+  document.getElementById('picker-name-b').textContent   = m.teamB;
+
+  const initA = pred?.predictedA ?? 0, initB = pred?.predictedB ?? 0;
+  ['a','b'].forEach(t => {
+    const el = document.getElementById(`score-${t}`);
+    el.textContent = t === 'a' ? initA : initB;
+    el.dataset.val = t === 'a' ? initA : initB;
+  });
+
+  document.getElementById('predict-locked-msg').style.display = locked ? 'block' : 'none';
+  document.getElementById('predict-save-btn').disabled = locked;
+  document.querySelectorAll('.stepper-btn').forEach(b => b.disabled = locked);
+  showView('view-predict');
+}
+
+function adjustScore(team, delta) {
+  const el = document.getElementById(`score-${team}`);
+  const next = Math.max(0, Math.min(20, parseInt(el.dataset.val, 10) + delta));
+  el.dataset.val = next; el.textContent = next;
+  el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+}
+
+async function savePrediction() {
+  const m = STATE.currentPredictMatch;
+  if (!m || !STATE.session) return;
+  if (isLocked(m)) { showToast('Predictions are closed for this match', 'lock'); return; }
+  const btn = document.getElementById('predict-save-btn');
+  if (btn.disabled) return;
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const scoreA   = parseInt(document.getElementById('score-a').dataset.val, 10);
+  const scoreB   = parseInt(document.getElementById('score-b').dataset.val, 10);
+  const predId   = `${STATE.session.userId}_${m.matchId}`;
+  const lastMin  = isLastMinuteWindow(m);
+  const existing = STATE.predictions[m.matchId];
+
+  let saved = false;
+  try {
+    const pred = {
+      userId: STATE.session.userId, matchId: m.matchId,
+      predictedA: scoreA, predictedB: scoreB,
+      updatedAt: serverTimestamp(), lastMinute: lastMin,
+    };
+    if (!existing) pred.submittedAt = serverTimestamp();
+    await setDoc(doc(STATE.db, 'predictions', predId), pred, { merge: true });
+    saved = true;
+    STATE.predictions[m.matchId] = { ...pred, pointsAwarded: existing?.pointsAwarded ?? null };
+    showToast(lastMin
+      ? `🔥 Last-minute pick! ${m.teamA} ${scoreA}–${scoreB} ${m.teamB}`
+      : `Saved: ${m.teamA} ${scoreA}–${scoreB} ${m.teamB}`, 'success');
+    showView('view-home');
+    selectDate(activeRound);
+  } catch (e) { if (!saved) showToast('Error saving — try again', 'error'); console.error(e); }
+  btn.disabled = false; btn.textContent = 'Save Prediction 💾';
+}
+
+// ── Deadline banner ────────────────────────────────────
+function renderDeadlineBanner() {
+  const banner = document.getElementById('deadline-banner');
+  if (!banner) return;
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  const now = Date.now();
+  const soonMatch = STATE.matches
+    .filter(m => { const lk = getLockMs(m); return !isLocked(m) && lk - now <= TWO_HOURS && lk > now && !STATE.predictions[m.matchId]; })
+    .sort((a, b) => getLockMs(a) - getLockMs(b))[0];
+  if (!soonMatch) { banner.style.display = 'none'; return; }
+  const t = timeUntil(getLockMs(soonMatch));
+  banner.style.display = 'flex';
+  banner.innerHTML = `⚠️ <span><strong>${soonMatch.teamA} vs ${soonMatch.teamB}</strong> locks in <strong>${t}</strong> — no pick yet</span>
+    <button class="banner-predict-btn" id="banner-btn">Predict now →</button>`;
+  document.getElementById('banner-btn').addEventListener('click', () => openPredictView(soonMatch.matchId));
+}
+
+// ═══════════════════════════════════════════════════════
+// LEADERBOARD
+// ═══════════════════════════════════════════════════════
+async function computeUserAccuracy() {
+  const snap = await getDocs(collection(STATE.db, 'predictions'));
+  const allPreds = {}, finished = {}, exactMap = {}, winnerMap = {};
+  snap.forEach(d => {
+    const p = d.data();
+    allPreds[p.userId] = (allPreds[p.userId] || 0) + 1;
+    if (p.pointsAwarded != null) {
+      finished[p.userId] = (finished[p.userId] || 0) + 1;
+      if (p.pointsAwarded === PTS_EXACT)  { exactMap[p.userId]  = (exactMap[p.userId]  || 0) + 1; }
+      if (p.pointsAwarded === PTS_RESULT) { winnerMap[p.userId] = (winnerMap[p.userId] || 0) + 1; }
+    }
+  });
+  STATE.users.forEach(u => {
+    const total = finished[u.id] || 0;
+    u.predictionsSubmitted = allPreds[u.id]   || 0;
+    u.finishedPreds        = total;
+    u.computedExact        = exactMap[u.id]   || 0;
+    u.computedWinner       = winnerMap[u.id]  || 0;
+    u.exactAccuracy        = total >= 1 ? Math.round(((exactMap[u.id]  || 0) / total) * 100) : null;
+    u.resultAccuracy       = total >= 1 ? Math.round(((winnerMap[u.id] || 0) / total) * 100) : null;
+  });
+}
+
+async function openCompareModal(userId, nickname) {
+  const modal = document.getElementById('compare-modal');
+  document.getElementById('compare-title').textContent = `You vs ${nickname}`;
+  const body = document.getElementById('compare-body');
+  body.innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
+  modal.style.display = 'flex';
+
+  const snap = await getDocs(query(collection(STATE.db, 'predictions'), where('userId', '==', userId)));
+  const theirPreds = {};
+  snap.forEach(d => { const p = d.data(); theirPreds[p.matchId] = p; });
+
+  const completed = STATE.matches
+    .filter(m => m.status === 'completed' && m.resultA !== null)
+    .sort((a, b) => new Date(b.kickoffUTC) - new Date(a.kickoffUTC));
+
+  if (!completed.length) {
+    body.innerHTML = '<p style="text-align:center;color:var(--muted);padding:1.5rem">No completed matches yet</p>';
+    return;
+  }
+
+  const ptsCls   = p => p === PTS_EXACT ? 'exact' : p === PTS_RESULT ? 'winner' : p === 0 ? 'wrong' : 'none';
+  const ptsLabel = p => p === PTS_EXACT ? `+${PTS_EXACT} ⚽` : p === PTS_RESULT ? `+${PTS_RESULT} ✓` : p === 0 ? '0 pts' : '–';
+
+  body.innerHTML = completed.map(m => {
+    const mine   = STATE.predictions[m.matchId];
+    const theirs = theirPreds[m.matchId];
+    const myPts  = mine?.pointsAwarded ?? null;
+    const thPts  = theirs ? calculatePoints(theirs.predictedA, theirs.predictedB, m.resultA, m.resultB) : null;
+    return `<div class="compare-row">
+      <div class="compare-match-label">${getFlag(m.teamA, m.flagA)} ${m.teamA} <strong>${m.resultA}–${m.resultB}</strong> ${m.teamB} ${getFlag(m.teamB, m.flagB)}</div>
+      <div class="compare-picks">
+        <div class="compare-pick ${ptsCls(myPts)}">
+          <span class="compare-who">You</span>
+          <span class="compare-score">${mine ? `${mine.predictedA}–${mine.predictedB}` : '–'}</span>
+          <span class="compare-pts">${ptsLabel(myPts)}</span>
+        </div>
+        <div class="compare-pick ${ptsCls(thPts)}">
+          <span class="compare-who">${nickname}</span>
+          <span class="compare-score">${theirs ? `${theirs.predictedA}–${theirs.predictedB}` : '–'}</span>
+          <span class="compare-pts">${ptsLabel(thPts)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function initLeaderboard() {
+  document.getElementById('leaderboard-body').innerHTML =
+    '<div class="loading-center"><div class="spinner"></div></div>';
+  await fetchUsers();
+  await computeUserAccuracy();
+  renderLeaderboardTable(STATE.users);
+}
+
+function renderLeaderboardTable(users) {
+  const myId      = STATE.session.userId;
+  const rankIcon  = ['🥇','🥈','🥉'];
+  const container = document.getElementById('leaderboard-body');
+  const prevRanks = loadPrevRanks();
+
+  if (!users.length) { container.innerHTML = '<div class="lb-empty">No data yet</div>'; return; }
+
+  const totalCompleted = STATE.matches.filter(m => m.resultA !== null).length;
+
+  const rows = users.map((u, i) => {
+    const pts    = u.totalPoints    || 0;
+    const exact  = u.computedExact  || 0;
+    const winner = u.computedWinner || 0;
+    const played = u.predictionsSubmitted || 0;
+    const isMe   = u.id === myId;
+    const rankCls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+    const rankNum = i < 3 ? rankIcon[i] : (i + 1);
+
+    let moveHTML = '';
+    if (prevRanks[u.id] != null) {
+      const diff = prevRanks[u.id] - (i + 1);
+      if (diff > 0)      moveHTML = `<div class="lb-rank-move up">↑${diff}</div>`;
+      else if (diff < 0) moveHTML = `<div class="lb-rank-move down">↓${Math.abs(diff)}</div>`;
+      else               moveHTML = `<div class="lb-rank-move same">–</div>`;
+    }
+
+    const champ = u.championPick   || '–';
+    const topSc = u.topScorerPick  || '–';
+    const champBonus = u.champBonus    || 0;
+    const topBonus   = u.topScorerBonus || 0;
+
+    const mainRow = `<tr class="lb-tr ${isMe ? 'lb-me' : ''} ${rankCls}" data-uid="${u.id}" data-nickname="${u.nickname}">
+      <td class="lb-td-rank"><div class="lb-rank-num">${rankNum}</div>${moveHTML}</td>
+      <td class="lb-td-player">
+        <div class="lb-player-wrap">
+          ${getAvatarHTML(u, 32)}
+          <span class="lb-name-text">${u.nickname}${isMe ? '<span class="me-tag">YOU</span>' : ''}</span>
+        </div>
+      </td>
+      <td class="lb-td-compare">${!isMe ? `<button class="lb-inline-compare" data-uid="${u.id}" data-nickname="${u.nickname}">⇄</button>` : ''}</td>
+      <td class="lb-td-num lb-td-total">${totalCompleted}</td>
+      <td class="lb-td-num lb-td-played">${played}</td>
+      <td class="lb-td-num lb-td-exact">${exact}</td>
+      <td class="lb-td-num lb-td-result">${winner}</td>
+      <td class="lb-td-pts"><span class="lb-pts">${pts}</span></td>
+    </tr>`;
+
+    const compareBtn = !isMe
+      ? `<button class="lb-drawer-compare" data-uid="${u.id}" data-nickname="${u.nickname}">Compare ↗</button>` : '';
+
+    const drawerRow = `<tr class="lb-tr-drawer" data-uid="${u.id}">
+      <td colspan="8">
+        <div class="lb-drawer">
+          <div class="lb-drawer-picks">
+            <span class="lb-drawer-pick"><span class="lb-drawer-lbl">🏆 Winner pick</span>${champ}${champBonus ? ` <span class="bonus-awarded">+${champBonus}pts</span>` : ''}</span>
+            <span class="lb-drawer-pick"><span class="lb-drawer-lbl">⚽ Top Scorer Team</span>${topSc}${topBonus ? ` <span class="bonus-awarded">+${topBonus}pts</span>` : ''}</span>
+          </div>
+          ${compareBtn}
+        </div>
+      </td>
+    </tr>`;
+
+    return mainRow + drawerRow;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="lb-table">
+      <thead>
+        <tr>
+          <th class="lb-th-rank">#</th>
+          <th class="lb-th-player">Player</th>
+          <th class="lb-th-compare">⚡</th>
+          <th class="lb-th-num">Done</th>
+          <th class="lb-th-num">Played</th>
+          <th class="lb-th-num">Exact</th>
+          <th class="lb-th-num">Result</th>
+          <th class="lb-th-pts">Pts</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="lb-legend">
+      Exact score = <span>${PTS_EXACT}pts</span> · Correct result = <span>${PTS_RESULT}pts</span> ·
+      Tournament winner = <span>+${PTS_CHAMP}pts</span> · Top scoring team = <span>+${PTS_TOPTEAM}pts</span>
+    </div>`;
+
+  document.getElementById('leaderboard-updated').textContent =
+    `Updated ${new Date().toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit' })}`;
+
+  if (!activeRound) {
+    const completedCount = STATE.matches.filter(m => m.resultA !== null).length;
+    saveRankSnapshot(users, completedCount);
+  }
+
+  document.querySelectorAll('.lb-tr').forEach(row => {
+    row.addEventListener('click', () => {
+      const wasOpen = row.classList.contains('expanded');
+      document.querySelectorAll('.lb-tr.expanded').forEach(r => r.classList.remove('expanded'));
+      document.querySelectorAll('.lb-tr-drawer.open').forEach(d => d.classList.remove('open'));
+      if (!wasOpen) {
+        row.classList.add('expanded');
+        const drawer = row.nextElementSibling;
+        if (drawer?.classList.contains('lb-tr-drawer')) drawer.classList.add('open');
+      }
+    });
+  });
+
+  document.querySelectorAll('.lb-drawer-compare, .lb-inline-compare').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openCompareModal(btn.dataset.uid, btn.dataset.nickname);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// MY PREDICTIONS VIEW
+// ═══════════════════════════════════════════════════════
+async function initMyPredictions() {
+  await Promise.all([fetchMatches(), fetchMyPredictions()]);
+  renderMyPredictions();
+}
+
+function renderMyPredictions() {
+  let totalPts = 0, exact = 0, winner = 0;
+  const groups = {};
+  STATE.matches.forEach(m => {
+    const p = STATE.predictions[m.matchId];
+    if (!p) return;
+    if (!groups[m.matchDay]) groups[m.matchDay] = [];
+    groups[m.matchDay].push({ m, p });
+    if (p.pointsAwarded === PTS_EXACT)  { totalPts += PTS_EXACT;  exact++;  }
+    else if (p.pointsAwarded === PTS_RESULT) { totalPts += PTS_RESULT; winner++; }
+  });
+
+  const scored = Object.values(STATE.predictions).filter(p => p.pointsAwarded != null);
+  const accuracy = scored.length > 0 ? Math.round(((exact + winner) / scored.length) * 100) : 0;
+
+  document.getElementById('stat-pts').textContent    = totalPts;
+  document.getElementById('stat-exact').textContent  = exact;
+  document.getElementById('stat-winner').textContent = winner;
+  document.getElementById('stat-acc').textContent    = accuracy + '%';
+
+  const container = document.getElementById('my-preds-list');
+  if (!Object.keys(groups).length) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">No predictions yet — go make some!</div></div>`;
+    return;
+  }
+
+  // Order rounds properly
+  const orderedGroups = ROUND_ORDER.filter(r => groups[r]);
+  container.innerHTML = orderedGroups.map(day => {
+    const items = groups[day];
+    return `<div class="matchday-group">
+      <div class="matchday-label">${day}</div>
+      ${items.map(({ m, p }) => {
+        const pts = p.pointsAwarded;
+        const ptsCls   = pts === PTS_EXACT ? 'exact' : pts === PTS_RESULT ? 'winner' : pts === 0 ? 'wrong' : 'none';
+        const ptsLabel = pts === PTS_EXACT ? `+${PTS_EXACT}` : pts === PTS_RESULT ? `+${PTS_RESULT}` : pts === 0 ? '0' : '–';
+        const result = m.resultA != null ? `${m.resultA} – ${m.resultB}` : null;
+        return `<div class="pred-fm-card">
+          <div class="pred-fm-row">
+            <div class="pred-fm-team">
+              <span class="pred-fm-flag">${getFlag(m.teamA, m.flagA)}</span>
+              <span class="pred-fm-name">${m.teamA}</span>
+            </div>
+            <div class="pred-fm-center">
+              <div class="pred-fm-my-score">${p.predictedA} – ${p.predictedB}</div>
+              <div class="pred-fm-score-label">MY PICK</div>
+              ${result
+                ? `<div class="pred-fm-result">${result}</div><div class="pred-fm-score-label">RESULT</div>`
+                : `<div class="pred-fm-result pending">?–?</div><div class="pred-fm-score-label">PENDING</div>`}
+            </div>
+            <div class="pred-fm-team right">
+              <span class="pred-fm-flag">${getFlag(m.teamB, m.flagB)}</span>
+              <span class="pred-fm-name">${m.teamB}</span>
+            </div>
+          </div>
+          <div class="pred-fm-pts ${ptsCls}">${ptsLabel} pts</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// ADMIN PANEL
+// ═══════════════════════════════════════════════════════
+let adminTab = 'users';
+
+async function initAdminPanel() {
+  if (!STATE.session?.isAdmin) { showToast('Admin access only', 'error'); return; }
+  setAdminTab('users');
+}
+
+function setAdminTab(tab) {
+  adminTab = tab;
+  document.querySelectorAll('#view-admin .tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.admin-section').forEach(s => s.style.display = s.dataset.tab === tab ? 'block' : 'none');
+  if (tab === 'users')    renderAdminUsers();
+  if (tab === 'matches')  renderAdminMatches();
+  if (tab === 'recalc')   renderRecalcSection();
+  if (tab === 'backdate') renderBackdateSection();
+  if (tab === 'bonuses')  renderBonusSection();
+  if (tab === 'audit')    {}
+}
+
+async function renderAdminUsers() {
+  await fetchUsers();
+  const list = document.getElementById('admin-user-list');
+  list.innerHTML = STATE.users.map(u => `
+    <div class="user-row">
+      <div class="user-info" style="display:flex;align-items:center;gap:.75rem">
+        ${getAvatarHTML(u, 32)}
+        <div>
+          <div class="user-nickname">${u.nickname}</div>
+          <div class="user-meta">${u.totalPoints || 0} pts${u.championPick ? ` · 🏆 ${u.championPick}` : ''}${!u.pinHash ? ' · ⚠️ No PIN set' : ''}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end">
+        <button class="btn-sm btn-secondary" data-rename-user="${u.id}" data-nickname="${u.nickname}">✏️ Rename</button>
+        <button class="btn-sm btn-secondary" data-resetpin-user="${u.id}" data-nickname="${u.nickname}">🔑 Reset PIN</button>
+        <button class="btn-sm btn-danger"    data-delete-user="${u.id}">Delete</button>
+      </div>
+    </div>`).join('');
+
+  list.querySelectorAll('[data-rename-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.dataset.renameUser, current = btn.dataset.nickname;
+      const raw = prompt(`Rename "${current}" to:`, current);
+      if (!raw || raw.trim() === current) return;
+      const nickname = raw.trim().charAt(0).toUpperCase() + raw.trim().slice(1).toLowerCase();
+      await updateDoc(doc(STATE.db, 'users', uid), { nickname });
+      showToast(`Renamed to "${nickname}"`, 'success'); renderAdminUsers();
+    });
+  });
+  list.querySelectorAll('[data-resetpin-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`Reset PIN for ${btn.dataset.nickname}?`)) return;
+      await updateDoc(doc(STATE.db, 'users', btn.dataset.resetpinUser), { pinHash: '' });
+      showToast('PIN reset', 'success'); renderAdminUsers();
+    });
+  });
+  list.querySelectorAll('[data-delete-user]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Disable this user?')) return;
+      await updateDoc(doc(STATE.db, 'users', btn.dataset.deleteUser), { disabled: true });
+      showToast('User disabled', 'success'); renderAdminUsers();
+    });
+  });
+}
+
+async function addAdminUser() {
+  const raw = document.getElementById('new-nickname').value.trim();
+  if (!raw) { showToast('Nickname required', 'error'); return; }
+  const nickname = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  try {
+    const existing = await getDocs(collection(STATE.db, 'users'));
+    let duplicate = false;
+    existing.forEach(d => {
+      if (!d.data().disabled && (d.data().nickname || '').toLowerCase().replace(/\s+/g, '') === nickname.toLowerCase().replace(/\s+/g, '')) duplicate = true;
+    });
+    if (duplicate) { showToast(`"${nickname}" already exists`, 'error'); return; }
+    await setDoc(doc(collection(STATE.db, 'users')), {
+      nickname, pinHash: '', mobile: '',
+      isAdmin: false, totalPoints: 0, exactScores: 0, correctResults: 0,
+      championPick: '', topScorerPick: '',
+      champBonus: 0, topScorerBonus: 0,
+      photoURL: '', createdAt: serverTimestamp()
+    });
+    showToast(`${nickname} added! They'll set their PIN on first login.`, 'success');
+    document.getElementById('new-nickname').value = '';
+    renderAdminUsers();
+  } catch (e) { showToast('Error adding user', 'error'); console.error(e); }
+}
+
+function renderAdminMatches() {
+  const container = document.getElementById('admin-match-list');
+  const byRound = {};
+  STATE.matches.forEach(m => { if (!byRound[m.matchDay]) byRound[m.matchDay] = []; byRound[m.matchDay].push(m); });
+
+  container.innerHTML = ROUND_ORDER.filter(r => byRound[r]).map(round => `
+    <div class="admin-card" style="margin-bottom:1rem">
+      <div class="admin-card-head">${round}</div>
+      <div class="admin-card-body" style="padding:0">
+        ${byRound[round].sort((a,b) => new Date(a.kickoffUTC)-new Date(b.kickoffUTC)).map(m => {
+          const hasResult = m.resultA != null && m.resultB != null;
+          return `
+          <div class="match-admin-row" style="padding:.875rem 1rem">
+            <div class="match-admin-teams">
+              <span>${getFlag(m.teamA, m.flagA)} ${m.teamA} vs ${m.teamB} ${getFlag(m.teamB, m.flagB)}</span>
+              <span class="status-badge ${m.status}">${m.status}${hasResult ? ` · ${m.resultA}–${m.resultB}` : ''}</span>
+            </div>
+            <div class="match-admin-meta">${formatKickoff(m.kickoffUTC)}</div>
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.4rem">
+              <input style="background:var(--pitch);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem;padding:0.35rem 0.5rem;width:180px"
+                id="team-a-${m.matchId}" value="${m.teamA}" placeholder="Team A name">
+              <input style="background:var(--pitch);border:1px solid var(--border);border-radius:4px;color:var(--text);font-size:0.85rem;padding:0.35rem 0.5rem;width:180px"
+                id="team-b-${m.matchId}" value="${m.teamB}" placeholder="Team B name">
+              <button class="btn btn-secondary btn-sm" style="width:auto;font-size:0.72rem" onclick="updateTeamNames('${m.matchId}')">Update Teams</button>
+            </div>
+            <div class="result-entry" style="margin-top:0.5rem">
+              <input class="result-input" id="res-a-${m.matchId}" type="number" min="0" max="20" placeholder="–" value="${m.resultA ?? ''}">
+              <span class="result-dash">–</span>
+              <input class="result-input" id="res-b-${m.matchId}" type="number" min="0" max="20" placeholder="–" value="${m.resultB ?? ''}">
+              <button class="btn btn-secondary btn-sm" style="width:auto;font-size:0.72rem" onclick="saveMatchResult('${m.matchId}')">
+                ${hasResult ? '✏️ Override' : 'Save Result'}
+              </button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+
+async function updateTeamNames(matchId) {
+  const tA = document.getElementById(`team-a-${matchId}`)?.value.trim();
+  const tB = document.getElementById(`team-b-${matchId}`)?.value.trim();
+  if (!tA || !tB) { showToast('Both team names required', 'error'); return; }
+  try {
+    await setDoc(doc(STATE.db, 'matches', matchId), { teamA: tA, teamB: tB }, { merge: true });
+    const m = STATE.matches.find(x => x.matchId === matchId);
+    if (m) { m.teamA = tA; m.teamB = tB; }
+    showToast(`Updated: ${tA} vs ${tB}`, 'success');
+  } catch (e) { showToast('Error updating teams', 'error'); console.error(e); }
+}
+
+async function saveMatchResult(matchId, autoRA, autoRB) {
+  const rA = autoRA !== undefined ? autoRA : parseInt(document.getElementById(`res-a-${matchId}`)?.value, 10);
+  const rB = autoRB !== undefined ? autoRB : parseInt(document.getElementById(`res-b-${matchId}`)?.value, 10);
+  if (isNaN(rA) || isNaN(rB)) { showToast('Enter valid scores', 'error'); return; }
+  try {
+    await setDoc(doc(STATE.db, 'matches', matchId), { resultA: rA, resultB: rB, status: 'completed' }, { merge: true });
+    const pSnap = await getDocs(query(collection(STATE.db, 'predictions'), where('matchId', '==', matchId)));
+    const batch = writeBatch(STATE.db);
+    let total = 0, exact = 0, correct = 0;
+    const deltas = {};
+    pSnap.forEach(d => {
+      const p = d.data();
+      const pts = calculatePoints(p.predictedA, p.predictedB, rA, rB);
+      batch.update(d.ref, { pointsAwarded: pts });
+      total++; if (pts === PTS_EXACT) exact++; if (pts === PTS_RESULT) correct++;
+      deltas[p.userId] = (deltas[p.userId] || 0) + (pts - (p.pointsAwarded ?? 0));
+    });
+    await batch.commit();
+    const uBatch = writeBatch(STATE.db);
+    for (const [uid, delta] of Object.entries(deltas)) {
+      if (delta === 0) continue;
+      const s = await getDoc(doc(STATE.db, 'users', uid));
+      if (s.exists()) uBatch.update(doc(STATE.db, 'users', uid), { totalPoints: (s.data().totalPoints || 0) + delta });
+    }
+    await uBatch.commit();
+    if (autoRA === undefined) showToast(`✅ ${total} predictions scored: ${exact} exact, ${correct} correct`, 'success');
+    const m = STATE.matches.find(x => x.matchId === matchId);
+    if (m) { m.resultA = rA; m.resultB = rB; m.status = 'completed'; }
+  } catch (e) { showToast('Error saving result', 'error'); console.error(e); }
+}
+
+// ── Bonus Award ────────────────────────────────────────
+function renderBonusSection() {
+  document.getElementById('bonus-section-content').innerHTML = `
+    <div class="admin-card">
+      <div class="admin-card-head">🏆 Award Tournament Winner Bonus (+${PTS_CHAMP} pts)</div>
+      <div class="admin-card-body">
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Select the actual tournament winner to award ${PTS_CHAMP} pts to all players who picked correctly.</p>
+        <div class="admin-form">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Actual Champion</label>
+            <select id="bonus-champ-select" class="form-select">
+              <option value="">— Select winner —</option>
+              ${getKnownTeams().map(t => `<option value="${t}">${t}</option>`).join('')}
+            </select>
+          </div>
+          <button id="award-champ-btn" class="btn btn-primary" style="width:auto">Award Champion Bonus</button>
+        </div>
+      </div>
+    </div>
+    <div class="admin-card">
+      <div class="admin-card-head">⚽ Award Top Scoring Team Bonus (+${PTS_TOPTEAM} pts)</div>
+      <div class="admin-card-body">
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Select the actual top scoring team to award ${PTS_TOPTEAM} pts to players who picked correctly.</p>
+        <div class="admin-form">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Top Scoring Team</label>
+            <select id="bonus-topscorer-select" class="form-select">
+              <option value="">— Select team —</option>
+              ${getKnownTeams().map(t => `<option value="${t}">${t}</option>`).join('')}
+            </select>
+          </div>
+          <button id="award-topscorer-btn" class="btn btn-primary" style="width:auto">Award Top Scorer Bonus</button>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('award-champ-btn').addEventListener('click', () => awardBonus('champion'));
+  document.getElementById('award-topscorer-btn').addEventListener('click', () => awardBonus('topscorer'));
+}
+
+async function awardBonus(type) {
+  const isChamp = type === 'champion';
+  const selectId = isChamp ? 'bonus-champ-select' : 'bonus-topscorer-select';
+  const winner   = document.getElementById(selectId).value;
+  if (!winner) { showToast('Select a team first', 'error'); return; }
+  const pts      = isChamp ? PTS_CHAMP : PTS_TOPTEAM;
+  const pickField = isChamp ? 'championPick' : 'topScorerPick';
+  const bonusField = isChamp ? 'champBonus' : 'topScorerBonus';
+  const label = isChamp ? 'Tournament Winner' : 'Top Scoring Team';
+
+  if (!confirm(`Award +${pts} pts to all players who picked "${winner}" as ${label}?`)) return;
+
+  await fetchUsers();
+  const batch = writeBatch(STATE.db);
+  let count = 0;
+  for (const u of STATE.users) {
+    if (u[pickField] === winner) {
+      const newTotal = (u.totalPoints || 0) + pts;
+      batch.update(doc(STATE.db, 'users', u.id), {
+        totalPoints: newTotal,
+        [bonusField]: pts,
+      });
+      count++;
+    }
+  }
+  await batch.commit();
+  showToast(`✅ +${pts} pts awarded to ${count} player${count !== 1 ? 's' : ''} who picked ${winner}`, 'success');
+  renderAdminUsers();
+}
+
+// ── Recalc ─────────────────────────────────────────────
+function renderRecalcSection() {
+  const sel = document.getElementById('recalc-match-select');
+  sel.innerHTML = '<option value="">— Select a completed match —</option>' +
+    STATE.matches.filter(m => m.status === 'completed')
+      .map(m => `<option value="${m.matchId}">${m.teamA} vs ${m.teamB} (${m.matchDay})</option>`).join('');
+}
+
+async function recalcMatch() {
+  const id = document.getElementById('recalc-match-select').value;
+  if (!id) { showToast('Select a match first', 'error'); return; }
+  await saveMatchResult(id);
+}
+
+async function recalcAll() {
+  if (!confirm('Rebuild ALL user point totals from scratch?')) return;
+  showToast('Rebuilding…', 'info');
+  try {
+    const uSnap = await getDocs(collection(STATE.db, 'users'));
+    const validUids = new Set(), totals = {};
+    uSnap.forEach(d => { validUids.add(d.id); totals[d.id] = 0; });
+    const pSnap = await getDocs(collection(STATE.db, 'predictions'));
+    pSnap.forEach(d => {
+      const p = d.data();
+      if (p.pointsAwarded != null && validUids.has(p.userId))
+        totals[p.userId] = (totals[p.userId] || 0) + p.pointsAwarded;
+    });
+    // Also add bonuses back in
+    uSnap.forEach(d => {
+      const uid = d.id;
+      if (!validUids.has(uid)) return;
+      totals[uid] = (totals[uid] || 0) + (d.data().champBonus || 0) + (d.data().topScorerBonus || 0);
+    });
+    const batch = writeBatch(STATE.db);
+    Object.entries(totals).forEach(([uid, pts]) => batch.update(doc(STATE.db, 'users', uid), { totalPoints: pts }));
+    await batch.commit();
+    showToast('All totals rebuilt!', 'success');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); console.error(e); }
+}
+
+async function rescoreAllMatches() {
+  if (!confirm(`Re-score ALL predictions for ALL completed matches with current scoring (${PTS_EXACT} / ${PTS_RESULT} / 0)? This overwrites stored points.`)) return;
+  showToast('Re-scoring all matches…', 'info');
+  try {
+    const completedMatches = STATE.matches.filter(m => m.status === 'completed' && m.resultA != null);
+    let predCount = 0;
+    for (const m of completedMatches) {
+      const pSnap = await getDocs(query(collection(STATE.db, 'predictions'), where('matchId', '==', m.matchId)));
+      if (pSnap.empty) continue;
+      const batch = writeBatch(STATE.db);
+      pSnap.forEach(d => {
+        const p = d.data();
+        batch.update(d.ref, { pointsAwarded: calculatePoints(p.predictedA, p.predictedB, m.resultA, m.resultB) });
+        predCount++;
+      });
+      await batch.commit();
+    }
+    await recalcAll();
+    showToast(`✅ Re-scored ${predCount} predictions`, 'success');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); console.error(e); }
+}
+
+// ── Backdate ───────────────────────────────────────────
+function renderBackdateSection() {
+  const userSel = document.getElementById('backdate-user-select');
+  if (!userSel) return;
+  userSel.innerHTML = '<option value="">— Select player —</option>' +
+    STATE.users.map(u => `<option value="${u.id}">${u.nickname}</option>`).join('');
+  userSel.onchange = () => {
+    if (userSel.value) loadBackdateSheet(userSel.value);
+    else document.getElementById('backdate-sheet').style.display = 'none';
+  };
+}
+
+async function loadBackdateSheet(userId) {
+  const sheet = document.getElementById('backdate-sheet');
+  const container = document.getElementById('backdate-table-container');
+  const title = document.getElementById('backdate-sheet-title');
+  const user = STATE.users.find(u => u.id === userId);
+  title.textContent = `${user?.nickname || 'Player'}'s Predictions`;
+  container.innerHTML = '<p style="padding:1.25rem;color:var(--muted)">Loading…</p>';
+  sheet.style.display = 'block';
+
+  const pastMatches = STATE.matches
+    .filter(m => new Date(m.kickoffUTC) < new Date())
+    .sort((a, b) => new Date(a.kickoffUTC) - new Date(b.kickoffUTC));
+
+  const predsSnap = await getDocs(query(collection(STATE.db, 'predictions'), where('userId', '==', userId)));
+  const predsMap = {};
+  predsSnap.forEach(d => { predsMap[d.data().matchId] = d.data(); });
+  container.innerHTML = renderBackdateTable(pastMatches, predsMap);
+
+  // Mark dirty on input change
+  container.querySelectorAll('.bd-score-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const row = inp.closest('.bd-row');
+      if (!row) return;
+      row.classList.add('bd-row-dirty');
+      const statusEl = row.querySelector('.bd-status');
+      if (statusEl) { statusEl.textContent = '~'; statusEl.className = 'bd-status bd-status-dirty'; }
+    });
+  });
+}
+
+function renderBackdateTable(matches, predsMap) {
+  if (!matches.length) return '<p style="padding:1.25rem;color:var(--muted)">No completed matches yet.</p>';
+  const rows = matches.map(m => {
+    const pred = predsMap[m.matchId];
+    const hasPred = pred != null;
+    const date = new Date(m.kickoffUTC).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const resultStr = m.resultA != null ? `${m.resultA}–${m.resultB}` : '–';
+    const rowCls = hasPred ? '' : ' bd-row-missing';
+    const stCls  = hasPred ? 'bd-status-saved' : 'bd-status-missing';
+    return `<div class="bd-row${rowCls}" data-match-id="${m.matchId}">
+      <div class="bd-date">${date}</div>
+      <div class="bd-match">${getFlag(m.teamA, m.flagA)} ${m.teamA} <span class="bd-vs">vs</span> ${m.teamB} ${getFlag(m.teamB, m.flagB)}</div>
+      <div class="bd-inputs">
+        <input class="bd-score-input" type="number" min="0" max="20" value="${hasPred ? pred.predictedA : ''}" data-match-id="${m.matchId}" data-field="a" placeholder="–">
+        <span class="bd-dash">–</span>
+        <input class="bd-score-input" type="number" min="0" max="20" value="${hasPred ? pred.predictedB : ''}" data-match-id="${m.matchId}" data-field="b" placeholder="–">
+      </div>
+      <div class="bd-result">${resultStr}</div>
+      <div class="bd-status ${stCls}" id="bd-status-${m.matchId}">${hasPred ? '✓' : '!'}</div>
+    </div>`;
+  }).join('');
+  return `<div class="bd-header">
+    <div class="bd-date">Date</div>
+    <div class="bd-match">Match</div>
+    <div class="bd-inputs">Prediction</div>
+    <div class="bd-result">Result</div>
+    <div class="bd-status"></div>
+  </div>${rows}`;
+}
+
+async function saveAllBackdatePredictions() {
+  const userId = document.getElementById('backdate-user-select').value;
+  if (!userId) return;
+  const rowData = {};
+  document.querySelectorAll('.bd-row.bd-row-dirty .bd-score-input').forEach(inp => {
+    const matchId = inp.dataset.matchId, field = inp.dataset.field, val = inp.value.trim();
+    if (!rowData[matchId]) rowData[matchId] = {};
+    if (val !== '') rowData[matchId][field] = parseInt(val, 10);
+  });
+  const toSave = Object.entries(rowData).filter(([, v]) => v.a !== undefined && v.b !== undefined);
+  if (!toSave.length) { showToast('No predictions to save', 'info'); return; }
+  const btn = document.getElementById('backdate-save-all-btn');
+  btn.disabled = true; btn.textContent = `Saving ${toSave.length}…`;
+  let saved = 0, errors = 0;
+  for (const [matchId, scores] of toSave) {
+    try {
+      const m = STATE.matches.find(x => x.matchId === matchId);
+      if (!m) continue;
+      const predId = `${userId}_${matchId}`;
+      const pA = scores.a, pB = scores.b;
+      const pts = m.resultA != null ? calculatePoints(pA, pB, m.resultA, m.resultB) : null;
+      const existingSnap = await getDoc(doc(STATE.db, 'predictions', predId));
+      const oldPts = existingSnap.exists() ? (existingSnap.data().pointsAwarded ?? 0) : 0;
+      await setDoc(doc(STATE.db, 'predictions', predId), {
+        userId, matchId, predictedA: pA, predictedB: pB,
+        updatedAt: serverTimestamp(),
+        ...(existingSnap.exists() ? {} : { submittedAt: serverTimestamp() }),
+        lastMinute: false, backdated: true,
+        ...(pts !== null ? { pointsAwarded: pts } : {}),
+      }, { merge: true });
+      if (pts !== null) {
+        const delta = pts - oldPts;
+        if (delta !== 0) {
+          const uSnap = await getDoc(doc(STATE.db, 'users', userId));
+          if (uSnap.exists()) await updateDoc(doc(STATE.db, 'users', userId), { totalPoints: (uSnap.data().totalPoints || 0) + delta });
+        }
+      }
+      const statusEl = document.getElementById(`bd-status-${matchId}`);
+      if (statusEl) {
+        statusEl.textContent = '✓'; statusEl.className = 'bd-status bd-status-saved';
+        statusEl.closest('.bd-row')?.classList.remove('bd-row-missing', 'bd-row-dirty');
+      }
+      saved++;
+    } catch (e) { console.error('Error saving', matchId, e); errors++; }
+  }
+  btn.disabled = false; btn.textContent = 'Save All Changes';
+  showToast(`✅ Saved ${saved} prediction${saved !== 1 ? 's' : ''}${errors ? ` · ${errors} error(s)` : ''}`, 'success');
+}
+
+// ── Audit ──────────────────────────────────────────────
+async function runIntegrityAudit() {
+  const resultsEl = document.getElementById('audit-results');
+  resultsEl.innerHTML = '<p style="color:var(--silver);font-size:0.875rem">Running audit…</p>';
+  try {
+    const [uSnap, pSnap] = await Promise.all([getDocs(collection(STATE.db, 'users')), getDocs(collection(STATE.db, 'predictions'))]);
+    const nickMap = {};
+    uSnap.forEach(d => { nickMap[d.id] = d.data().nickname || d.id; });
+    const lockMap = {};
+    STATE.matches.forEach(m => { lockMap[m.matchId] = new Date(m.kickoffUTC).getTime() - 5 * 60 * 1000; });
+    const suspicious = [];
+    pSnap.forEach(d => {
+      const p = d.data();
+      if (p.backdated === true || !p.updatedAt) return;
+      const lockMs = lockMap[p.matchId];
+      if (!lockMs) return;
+      const updMs = p.updatedAt.toMillis ? p.updatedAt.toMillis() : p.updatedAt.seconds * 1000;
+      if (updMs > lockMs) suspicious.push({
+        user: nickMap[p.userId] || p.userId, matchId: p.matchId,
+        score: `${p.predictedA}–${p.predictedB}`, pts: p.pointsAwarded ?? '?',
+        updatedAt: new Date(updMs).toISOString().slice(0,19)+' UTC',
+        minsAfterLock: Math.round((updMs - lockMs) / 60000),
+      });
+    });
+    if (!suspicious.length) {
+      resultsEl.innerHTML = '<p style="color:#2ecc71;font-size:0.9rem">✅ No suspicious predictions found.</p>'; return;
+    }
+    const byUser = {};
+    suspicious.forEach(s => { if (!byUser[s.user]) byUser[s.user] = []; byUser[s.user].push(s); });
+    resultsEl.innerHTML = `<p style="color:#e67e22;font-size:0.875rem;margin-bottom:1rem">⚠️ Found ${suspicious.length} suspicious prediction(s) across ${Object.keys(byUser).length} user(s).</p>` +
+      Object.entries(byUser).map(([user, rows]) =>
+        `<div style="margin-bottom:1rem"><div style="font-weight:700;color:var(--gold);margin-bottom:.4rem">${user} — ${rows.length} suspicious</div>
+        ${rows.map(r => `<div style="font-size:0.8rem;color:var(--silver);padding:.3rem 0;border-top:1px solid var(--border)">${r.matchId}: ${r.score} (${r.pts}pts) · +${r.minsAfterLock}min after lock</div>`).join('')}</div>`
+      ).join('');
+  } catch (e) { resultsEl.innerHTML = `<p style="color:var(--red)">Error: ${e.message}</p>`; }
+}
+
+// ═══════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════
+async function initApp() {
+  const session = STATE.session || loadSession();
+  if (!session) { showView('view-login'); initLoginView(); return; }
+  STATE.session = session;
+
+  // Topbar
+  document.getElementById('topbar-avatar').innerHTML = getAvatarHTML({ nickname: session.nickname }, 32);
+  document.getElementById('nav-user-name').textContent = session.nickname;
+  document.getElementById('admin-nav-btn').style.display = session.isAdmin ? 'flex' : 'none';
+
+  await fetchMatches();
+  await fetchMyPredictions();
+
+  // Show/hide admin nav
+  showView('view-home');
+  buildRoundNav();
+  startCountdownTimers();
+
+  // Prompt champion picks if not set
+  const uSnap = await getDoc(doc(STATE.db, 'users', session.userId));
+  if (uSnap.exists()) {
+    const userData = uSnap.data();
+    if (!userData.championPick || !userData.topScorerPick) {
+      setTimeout(() => openChampionModal(userData), 800);
+    }
+  }
+}
+
+// ── Wire up DOM events ─────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  const app = initializeApp(FIREBASE_CONFIG);
+  STATE.db  = getFirestore(app);
+
+  // Bottom nav
+  document.querySelectorAll('.bnav-btn[data-view]').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
+      showView(view);
+      if (view === 'view-home')        initHomeView();
+      if (view === 'view-leaderboard') initLeaderboard();
+      if (view === 'view-my-preds')    initMyPredictions();
+      if (view === 'view-admin')       initAdminPanel();
+    })
+  );
+
+  // Logout
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    clearSession(); STATE.predictions = {}; STATE.users = []; STATE.matches = [];
+    STATE.countdownTimers.forEach(clearInterval); STATE.countdownTimers = [];
+    showView('view-login'); initLoginView();
+  });
+
+  // Login
+  document.getElementById('login-btn').addEventListener('click', handleLogin);
+  document.getElementById('login-pin').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+
+  // Admin modal
+  document.getElementById('admin-login-btn').addEventListener('click', handleAdminLogin);
+  document.getElementById('admin-login-close').addEventListener('click', () => {
+    document.getElementById('admin-login-modal').style.display = 'none';
+  });
+  document.getElementById('admin-password-input').addEventListener('keydown', e => { if (e.key === 'Enter') handleAdminLogin(); });
+
+  // PIN toggle
+  document.getElementById('pin-toggle')?.addEventListener('click', () => {
+    const inp = document.getElementById('login-pin');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+  });
+
+  // Predict view steppers
+  document.getElementById('stepper-plus-a').addEventListener('click',  () => adjustScore('a', +1));
+  document.getElementById('stepper-minus-a').addEventListener('click', () => adjustScore('a', -1));
+  document.getElementById('stepper-plus-b').addEventListener('click',  () => adjustScore('b', +1));
+  document.getElementById('stepper-minus-b').addEventListener('click', () => adjustScore('b', -1));
+  document.getElementById('predict-save-btn').addEventListener('click', savePrediction);
+  document.getElementById('predict-back-btn').addEventListener('click', () => { showView('view-home'); selectDate(activeRound); });
+
+  // Champion modal
+  document.getElementById('save-champion-btn').addEventListener('click', saveChampionPick);
+  document.getElementById('skip-champion-btn').addEventListener('click', () => { document.getElementById('champion-modal').style.display = 'none'; });
+  document.getElementById('close-champion-btn').addEventListener('click', () => { document.getElementById('champion-modal').style.display = 'none'; });
+  document.getElementById('my-picks-btn').addEventListener('click', async () => {
+    const uSnap = await getDoc(doc(STATE.db, 'users', STATE.session.userId));
+    openChampionModal(uSnap.exists() ? uSnap.data() : null);
+  });
+
+  // Compare modal close
+  document.getElementById('compare-modal-close').addEventListener('click', () => {
+    document.getElementById('compare-modal').style.display = 'none';
+  });
+
+  // Profile / avatar
+  document.getElementById('topbar-avatar-wrap').addEventListener('click', async () => {
+    const modal = document.getElementById('profile-modal');
+    const uSnap = await getDoc(doc(STATE.db, 'users', STATE.session.userId));
+    const userData = uSnap.exists() ? uSnap.data() : {};
+    document.getElementById('profile-name').textContent = STATE.session.nickname;
+    const preview = document.getElementById('profile-avatar-preview');
+    preview.innerHTML = getAvatarHTML(userData, 90);
+    modal.style.display = 'flex';
+  });
+  document.getElementById('profile-modal-close').addEventListener('click', () => { document.getElementById('profile-modal').style.display = 'none'; });
+  document.getElementById('profile-photo-input').addEventListener('change', async e => {
+    const file = e.target.files[0]; if (!file) return;
+    const b64 = await resizeImageToBase64(file, 80);
+    document.getElementById('profile-avatar-preview').innerHTML = `<img src="${b64}" style="width:90px;height:90px;border-radius:50%;object-fit:cover">`;
+    document.getElementById('profile-save-btn').dataset.photo = b64;
+  });
+  document.getElementById('profile-save-btn').addEventListener('click', async () => {
+    const photo = document.getElementById('profile-save-btn').dataset.photo;
+    if (!photo) return;
+    await setDoc(doc(STATE.db, 'users', STATE.session.userId), { photoURL: photo }, { merge: true });
+    document.getElementById('topbar-avatar').innerHTML = getAvatarHTML({ photoURL: photo, nickname: STATE.session.nickname }, 32);
+    document.getElementById('profile-modal').style.display = 'none';
+    showToast('Photo updated', 'success');
+  });
+
+  // Admin panel tabs
+  document.querySelectorAll('#view-admin .tab-btn').forEach(btn =>
+    btn.addEventListener('click', () => setAdminTab(btn.dataset.tab)));
+  document.getElementById('admin-add-user-btn').addEventListener('click', addAdminUser);
+  document.getElementById('recalc-match-btn').addEventListener('click', recalcMatch);
+  document.getElementById('recalc-all-btn').addEventListener('click', recalcAll);
+  document.getElementById('rescore-all-btn').addEventListener('click', rescoreAllMatches);
+  document.getElementById('backdate-save-all-btn').addEventListener('click', saveAllBackdatePredictions);
+  document.getElementById('run-audit-btn').addEventListener('click', runIntegrityAudit);
+
+  // Leaderboard updated label click → refresh
+  document.getElementById('leaderboard-updated').addEventListener('click', initLeaderboard);
+
+  // Boot
+  showView('view-login');
+  initLoginView();
+  const session = loadSession();
+  if (session) { STATE.session = session; initApp(); }
+});

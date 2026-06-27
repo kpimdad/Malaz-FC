@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a1628">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Malaz FC">
+  <title>Malaz FC · WC 2026</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ═══ TOP NAV ═══════════════════════════════════════════ -->
+<nav class="app-nav" id="app-nav" style="display:none">
+  <div class="nav-left">
+    <div class="nav-brand">
+      <span class="nav-trophy" onclick="onTrophyTap()" aria-label="Admin">🏆</span>
+      <span class="nav-title">Malaz FC</span>
+      <span class="nav-subtitle">WC 2026</span>
+    </div>
+  </div>
+  <div class="nav-right">
+    <button class="nav-icon-btn" id="my-picks-btn" title="My Tournament Picks">⭐</button>
+    <div class="avatar-wrap" id="topbar-avatar-wrap" title="Profile">
+      <div id="topbar-avatar"></div>
+    </div>
+    <button class="nav-icon-btn logout" id="logout-btn" title="Logout">⏻</button>
+  </div>
+</nav>
+
+<!-- ═══ TOAST ════════════════════════════════════════════ -->
+<div id="toast-container"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW: LOGIN
+════════════════════════════════════════════════════════ -->
+<div class="view active" id="view-login">
+  <div class="login-hero">
+    <div class="login-badge">⚽</div>
+    <h1 class="login-title">Malaz FC</h1>
+    <p class="login-sub">World Cup 2026 Predictor</p>
+  </div>
+
+  <div class="login-card">
+    <div class="form-group">
+      <label class="form-label" for="login-user-select">Your Name</label>
+      <select class="form-select" id="login-user-select">
+        <option value="">— Who are you? —</option>
+      </select>
+    </div>
+
+    <div class="form-group" id="login-firsttime-msg" style="display:none">
+      <div class="alert alert-info">First time? Choose a 4-digit PIN — you'll use it every time you log in.</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" id="login-pin-label" for="login-pin">4-Digit PIN</label>
+      <div class="pin-wrap">
+        <input class="form-input pin-input" id="login-pin" type="password"
+          inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="current-password">
+        <button class="pin-toggle" id="pin-toggle" type="button" aria-label="Show/hide PIN">👁</button>
+      </div>
+    </div>
+
+    <div class="form-group" id="login-pin-confirm-group" style="display:none">
+      <label class="form-label" for="login-pin-confirm">Confirm PIN</label>
+      <div class="pin-wrap">
+        <input class="form-input pin-input" id="login-pin-confirm" type="password"
+          inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="new-password">
+      </div>
+    </div>
+
+    <div class="form-error" id="login-error"></div>
+
+    <button class="btn btn-primary" id="login-btn">Enter ⚽</button>
+  </div>
+
+  <div class="login-footer">
+    <p>Scoring: <strong>25pts</strong> exact · <strong>10pts</strong> correct result</p>
+    <p>Bonus: <strong>+50pts</strong> tournament winner · <strong>+30pts</strong> top scoring team</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW: HOME / MATCH FEED
+════════════════════════════════════════════════════════ -->
+<div class="view" id="view-home">
+  <div class="deadline-banner" id="deadline-banner" style="display:none"></div>
+
+  <div class="date-nav-wrap">
+    <div class="date-nav" id="date-nav"></div>
+  </div>
+
+  <div class="match-list" id="match-list">
+    <div class="loading-center"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW: PREDICT
+════════════════════════════════════════════════════════ -->
+<div class="view" id="view-predict">
+  <div class="predict-container">
+    <div class="predict-header">
+      <button class="back-btn" id="predict-back-btn">← Back</button>
+      <div class="predict-meta-line">
+        <span id="predict-meta"></span>
+        <span id="predict-kickoff" class="predict-kickoff-sub"></span>
+      </div>
+    </div>
+
+    <div class="predict-teams-header">
+      <div class="predict-team-display">
+        <span class="predict-flag-lg" id="predict-flag-a"></span>
+        <span class="predict-team-name" id="predict-team-a"></span>
+      </div>
+      <div class="predict-vs">VS</div>
+      <div class="predict-team-display right">
+        <span class="predict-team-name" id="predict-team-b"></span>
+        <span class="predict-flag-lg" id="predict-flag-b"></span>
+      </div>
+    </div>
+
+    <div class="locked-msg" id="predict-locked-msg" style="display:none">
+      🔒 Predictions are locked for this match
+    </div>
+
+    <div class="score-picker">
+      <div class="team-score-picker">
+        <div class="picker-team">
+          <span id="picker-flag-a"></span>
+          <span id="picker-name-a"></span>
+        </div>
+        <div class="stepper">
+          <button class="stepper-btn" id="stepper-plus-a">+</button>
+          <span class="score-display" id="score-a" data-val="0">0</span>
+          <button class="stepper-btn" id="stepper-minus-a">−</button>
+        </div>
+      </div>
+
+      <div class="score-divider">–</div>
+
+      <div class="team-score-picker right">
+        <div class="picker-team right">
+          <span id="picker-name-b"></span>
+          <span id="picker-flag-b"></span>
+        </div>
+        <div class="stepper">
+          <button class="stepper-btn" id="stepper-plus-b">+</button>
+          <span class="score-display" id="score-b" data-val="0">0</span>
+          <button class="stepper-btn" id="stepper-minus-b">−</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="predict-hint">
+      <span class="pts-example exact">⚽ 25 pts — exact score</span>
+      <span class="pts-example winner">✓ 10 pts — correct result</span>
+    </div>
+
+    <button class="btn btn-primary predict-save" id="predict-save-btn">Save Prediction 💾</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW: LEADERBOARD
+════════════════════════════════════════════════════════ -->
+<div class="view" id="view-leaderboard">
+  <div class="lb-topbar">
+    <h2 class="lb-heading">Leaderboard</h2>
+    <button class="lb-refresh-btn" id="leaderboard-updated">Tap to refresh</button>
+  </div>
+  <div id="leaderboard-body">
+    <div class="loading-center"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW: MY PREDICTIONS
+════════════════════════════════════════════════════════ -->
+<div class="view" id="view-my-preds">
+  <div class="stats-bar">
+    <div class="stat-chip">
+      <span class="stat-val" id="stat-pts">0</span>
+      <span class="stat-lbl">Points</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-val exact" id="stat-exact">0</span>
+      <span class="stat-lbl">Exact</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-val winner" id="stat-winner">0</span>
+      <span class="stat-lbl">Correct</span>
+    </div>
+    <div class="stat-chip">
+      <span class="stat-val" id="stat-acc">–</span>
+      <span class="stat-lbl">Accuracy</span>
+    </div>
+  </div>
+  <div id="my-preds-list">
+    <div class="loading-center"><div class="spinner"></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     VIEW: ADMIN
+════════════════════════════════════════════════════════ -->
+<div class="view" id="view-admin">
+  <div class="admin-header">
+    <h2 class="admin-title">⚙️ Admin Panel</h2>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="users">Users</button>
+    <button class="tab-btn" data-tab="matches">Matches</button>
+    <button class="tab-btn" data-tab="bonuses">Bonuses</button>
+    <button class="tab-btn" data-tab="backdate">Backdate</button>
+    <button class="tab-btn" data-tab="recalc">Recalc</button>
+    <button class="tab-btn" data-tab="audit">Audit</button>
+  </div>
+
+  <!-- Users tab -->
+  <div class="admin-section" data-tab="users">
+    <div class="admin-card">
+      <div class="admin-card-head">Add Player</div>
+      <div class="admin-card-body">
+        <div class="admin-form">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" for="new-nickname">Nickname</label>
+            <input class="form-input" id="new-nickname" type="text" placeholder="e.g. Rashid" maxlength="30">
+          </div>
+          <button class="btn btn-primary" id="admin-add-user-btn" style="width:auto">Add Player</button>
+        </div>
+        <p class="admin-help-text">They'll choose their own 4-digit PIN on first login.</p>
+      </div>
+    </div>
+
+    <div class="admin-card">
+      <div class="admin-card-head">All Players</div>
+      <div class="admin-card-body" style="padding:0">
+        <div id="admin-user-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Matches tab -->
+  <div class="admin-section" data-tab="matches" style="display:none">
+    <div id="admin-match-list"></div>
+  </div>
+
+  <!-- Bonuses tab -->
+  <div class="admin-section" data-tab="bonuses" style="display:none">
+    <div id="bonus-section-content"></div>
+  </div>
+
+  <!-- Backdate tab -->
+  <div class="admin-section" data-tab="backdate" style="display:none">
+    <div class="admin-card">
+      <div class="admin-card-head">Backdate Predictions</div>
+      <div class="admin-card-body">
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Enter or correct predictions for past matches on behalf of a player.</p>
+        <div class="form-group">
+          <label class="form-label">Select Player</label>
+          <select class="form-select" id="backdate-user-select">
+            <option value="">— Select player —</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div id="backdate-sheet" style="display:none">
+      <div class="admin-card">
+        <div class="admin-card-head" id="backdate-sheet-title"></div>
+        <div class="admin-card-body" style="padding:0">
+          <div id="backdate-table-container"></div>
+        </div>
+        <div class="admin-card-foot">
+          <button class="btn btn-primary" id="backdate-save-all-btn">Save All Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recalc tab -->
+  <div class="admin-section" data-tab="recalc" style="display:none">
+    <div class="admin-card">
+      <div class="admin-card-head">Rescore a Match</div>
+      <div class="admin-card-body">
+        <div class="admin-form">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Match</label>
+            <select class="form-select" id="recalc-match-select">
+              <option value="">— Select a completed match —</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary" id="recalc-match-btn" style="width:auto">Rescore Match</button>
+        </div>
+      </div>
+    </div>
+    <div class="admin-card">
+      <div class="admin-card-head">Rebuild All Totals</div>
+      <div class="admin-card-body">
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Recalculates every user's total from stored pointsAwarded values. Run after a batch rescore.</p>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+          <button class="btn btn-secondary" id="recalc-all-btn" style="width:auto">Rebuild Point Totals</button>
+          <button class="btn btn-danger" id="rescore-all-btn" style="width:auto">Re-score All Matches</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit tab -->
+  <div class="admin-section" data-tab="audit" style="display:none">
+    <div class="admin-card">
+      <div class="admin-card-head">Prediction Integrity Audit</div>
+      <div class="admin-card-body">
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Finds predictions submitted or updated after their match kickoff lock time.</p>
+        <button class="btn btn-secondary" id="run-audit-btn" style="width:auto">Run Audit</button>
+        <div id="audit-results" style="margin-top:1rem"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     BOTTOM NAV
+════════════════════════════════════════════════════════ -->
+<nav class="bottom-nav" id="bottom-nav" style="display:none">
+  <button class="bnav-btn active" data-view="view-home">
+    <span class="bnav-icon">🏟️</span>
+    <span class="bnav-label">Matches</span>
+  </button>
+  <button class="bnav-btn" data-view="view-leaderboard">
+    <span class="bnav-icon">🏆</span>
+    <span class="bnav-label">Table</span>
+  </button>
+  <button class="bnav-btn" data-view="view-my-preds">
+    <span class="bnav-icon">📋</span>
+    <span class="bnav-label">My Picks</span>
+  </button>
+  <button class="bnav-btn" data-view="view-admin" id="admin-nav-btn" style="display:none">
+    <span class="bnav-icon">⚙️</span>
+    <span class="bnav-label">Admin</span>
+  </button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════════════════ -->
+
+<!-- Champion / Top Scorer picks -->
+<div class="modal-overlay" id="champion-modal" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card">
+    <button class="modal-close" id="close-champion-btn">×</button>
+    <div class="modal-header">
+      <div class="modal-icon">🏆</div>
+      <h2 class="modal-title">Tournament Picks</h2>
+      <p class="modal-sub">Make your bonus picks — once per tournament</p>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">🏆 Tournament Winner <span class="bonus-tag">+50 pts</span></label>
+        <select class="form-select" id="champion-select">
+          <option value="">— Pick a team —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">⚽ Top Scoring Team <span class="bonus-tag">+30 pts</span></label>
+        <select class="form-select" id="top-scorer-select">
+          <option value="">— Pick a team —</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="save-champion-btn">Save My Picks</button>
+      <button class="btn btn-ghost" id="skip-champion-btn">Skip for now</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin login (tap trophy ×5) -->
+<div class="modal-overlay" id="admin-login-modal" style="display:none" role="dialog">
+  <div class="modal-card" style="max-width:340px">
+    <button class="modal-close" id="admin-login-close">×</button>
+    <div class="modal-header">
+      <div class="modal-icon">🔐</div>
+      <h2 class="modal-title">Admin Access</h2>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Admin Password</label>
+        <input class="form-input" id="admin-password-input" type="password" placeholder="Password">
+      </div>
+      <div class="form-error" id="admin-login-error" style="display:none"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="admin-login-btn">Login</button>
+    </div>
+  </div>
+</div>
+
+<!-- Compare modal -->
+<div class="modal-overlay" id="compare-modal" style="display:none" role="dialog">
+  <div class="modal-card compare-modal-card">
+    <button class="modal-close" id="compare-modal-close">×</button>
+    <div class="modal-header">
+      <h2 class="modal-title" id="compare-title">Head to Head</h2>
+    </div>
+    <div class="modal-body" id="compare-body" style="max-height:60vh;overflow-y:auto;padding:0"></div>
+  </div>
+</div>
+
+<!-- Profile modal -->
+<div class="modal-overlay" id="profile-modal" style="display:none" role="dialog">
+  <div class="modal-card" style="max-width:360px">
+    <button class="modal-close" id="profile-modal-close">×</button>
+    <div class="modal-header" style="align-items:center">
+      <div id="profile-avatar-preview" style="margin-bottom:0.75rem"></div>
+      <h2 class="modal-title" id="profile-name"></h2>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Profile Photo</label>
+        <input type="file" id="profile-photo-input" accept="image/*" class="form-input" style="padding:0.4rem">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="profile-save-btn">Save Photo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     SCRIPTS — Firebase CDN (ES module → global shim)
+════════════════════════════════════════════════════════ -->
+<script type="module">
+  import { initializeApp }     from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+  import * as _firestore       from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+  window.firebaseApp       = { initializeApp };
+  window.firebaseFirestore = _firestore;
+</script>
+
+<script src="firebase-config.js"></script>
+<script src="matches.js"></script>
+<script>
+  // Give the ES-module shim time to resolve before app.js runs
+  document.addEventListener('DOMContentLoaded', () => {
+    const waitForFirebase = () => {
+      if (window.firebaseApp && window.firebaseFirestore) return;
+      setTimeout(waitForFirebase, 20);
+    };
+    waitForFirebase();
+  });
+</script>
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
+  }
+</script>
+
+</body>
+</html>
