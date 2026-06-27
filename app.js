@@ -1483,12 +1483,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     showView('view-login'); initLoginView();
   });
 
+  // Login / Register tabs
+  document.getElementById('tab-login').addEventListener('click', () => switchLoginTab('login'));
+  document.getElementById('tab-register').addEventListener('click', () => switchLoginTab('register'));
+
   // Login
   document.getElementById('login-btn').addEventListener('click', handleLogin);
   document.getElementById('login-pin').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+
+  // Register
   document.getElementById('register-btn').addEventListener('click', handleRegister);
   document.getElementById('reg-pin-confirm').addEventListener('keydown', e => { if (e.key === 'Enter') handleRegister(); });
-  // Auto sentence-case preview on name input
   document.getElementById('reg-name').addEventListener('blur', e => {
     if (e.target.value.trim()) e.target.value = toSentenceCase(e.target.value);
   });

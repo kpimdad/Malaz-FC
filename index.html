@@ -39,71 +39,79 @@
      VIEW: LOGIN
 ════════════════════════════════════════════════════════ -->
 <div class="view active" id="view-login">
-  <div class="login-hero">
-    <div class="login-badge">⚽</div>
-    <h1 class="login-title">Malaz FC</h1>
-    <p class="login-sub">World Cup 2026 Predictor</p>
-  </div>
+  <div class="login-page">
 
-  <div class="login-tabs">
-    <button class="login-tab active" id="tab-login" onclick="switchLoginTab('login')">Login</button>
-    <button class="login-tab" id="tab-register" onclick="switchLoginTab('register')">New Player</button>
-  </div>
-
-  <!-- LOGIN PANEL -->
-  <div class="login-card" id="login-panel">
-    <div class="form-group">
-      <label class="form-label" for="login-user-select">Your Name</label>
-      <select class="form-select" id="login-user-select">
-        <option value="">— Who are you? —</option>
-      </select>
+    <div class="login-hero">
+      <div class="login-badge">⚽</div>
+      <h1 class="login-title">Malaz FC</h1>
+      <p class="login-sub">World Cup 2026 · Predictor</p>
     </div>
 
-    <div class="form-group">
-      <label class="form-label" for="login-pin">4-Digit PIN</label>
-      <div class="pin-wrap">
-        <input class="form-input pin-input" id="login-pin" type="password"
-          inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="current-password">
-        <button class="pin-toggle" id="pin-toggle" type="button" aria-label="Show/hide PIN">👁</button>
+    <div class="login-card">
+
+      <!-- Tab switcher inside card -->
+      <div class="login-tabs">
+        <button class="login-tab active" id="tab-login">Sign In</button>
+        <button class="login-tab" id="tab-register">New Player</button>
+      </div>
+
+      <!-- LOGIN PANEL -->
+      <div id="login-panel">
+        <div class="form-group">
+          <label class="form-label" for="login-user-select">Who are you?</label>
+          <select class="form-select" id="login-user-select">
+            <option value="">— Select your name —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="login-pin">PIN</label>
+          <div class="pin-wrap">
+            <input class="form-input pin-input" id="login-pin" type="password"
+              inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="current-password">
+            <button class="pin-toggle" id="pin-toggle" type="button" aria-label="Show/hide PIN">👁</button>
+          </div>
+        </div>
+        <div class="form-error" id="login-error"></div>
+        <button class="btn btn-primary" id="login-btn">Enter ⚽</button>
+      </div>
+
+      <!-- REGISTER PANEL -->
+      <div id="register-panel" style="display:none">
+        <div class="form-group">
+          <label class="form-label" for="reg-name">Your Name</label>
+          <input class="form-input" id="reg-name" type="text" placeholder="e.g. Rashid" maxlength="30" autocomplete="off">
+          <span class="form-hint">Saved as Sentence Case · No duplicates allowed</span>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-pin">Choose a 4-Digit PIN</label>
+          <div class="pin-wrap">
+            <input class="form-input pin-input" id="reg-pin" type="password"
+              inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="new-password">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="reg-pin-confirm">Confirm PIN</label>
+          <div class="pin-wrap">
+            <input class="form-input pin-input" id="reg-pin-confirm" type="password"
+              inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="new-password">
+          </div>
+        </div>
+        <div class="form-error" id="register-error"></div>
+        <button class="btn btn-primary" id="register-btn">Create Account ⚽</button>
+      </div>
+
+    </div><!-- /login-card -->
+
+    <div class="login-footer">
+      <div class="login-scoring-pills">
+        <span class="scoring-pill exact">⚽ 25pts exact</span>
+        <span class="scoring-pill result">✓ 10pts correct</span>
+        <span class="scoring-pill bonus">🏆 +50pts winner</span>
+        <span class="scoring-pill bonus">🥅 +30pts top scorer</span>
       </div>
     </div>
 
-    <div class="form-error" id="login-error"></div>
-    <button class="btn btn-primary" id="login-btn">Enter ⚽</button>
-  </div>
-
-  <!-- REGISTER PANEL -->
-  <div class="login-card" id="register-panel" style="display:none">
-    <div class="form-group">
-      <label class="form-label" for="reg-name">Your Name</label>
-      <input class="form-input" id="reg-name" type="text" placeholder="e.g. Rashid" maxlength="30" autocomplete="off">
-      <span class="form-hint">Will be saved as sentence case (e.g. Rashid)</span>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label" for="reg-pin">Choose a 4-Digit PIN</label>
-      <div class="pin-wrap">
-        <input class="form-input pin-input" id="reg-pin" type="password"
-          inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="new-password">
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label" for="reg-pin-confirm">Confirm PIN</label>
-      <div class="pin-wrap">
-        <input class="form-input pin-input" id="reg-pin-confirm" type="password"
-          inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder="• • • •" autocomplete="new-password">
-      </div>
-    </div>
-
-    <div class="form-error" id="register-error"></div>
-    <button class="btn btn-primary" id="register-btn">Join ⚽</button>
-  </div>
-
-  <div class="login-footer">
-    <p>Scoring: <strong>25pts</strong> exact · <strong>10pts</strong> correct result</p>
-    <p>Bonus: <strong>+50pts</strong> tournament winner · <strong>+30pts</strong> top scoring team</p>
-  </div>
+  </div><!-- /login-page -->
 </div>
 
 <!-- ═══════════════════════════════════════════════════════
