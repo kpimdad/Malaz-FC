@@ -342,28 +342,40 @@ async function handleRegister() {
       btn.disabled = false; btn.textContent = 'Join ⚽'; return;
     }
 
-    const newRef = doc(collection(STATE.db, 'users'));
+    const pinHash = await hashPin(pin);
+    const newRef  = doc(collection(STATE.db, 'users'));
     await setDoc(newRef, {
-      nickname, pinHash: await hashPin(pin),
-      isAdmin: false, isAdminAccount: false, disabled: false,
-      totalPoints: 0, exactScores: 0, correctResults: 0,
-      championPick: '', topScorerPick: '',
-      champBonus: 0, topScorerBonus: 0,
-      photoURL: '', createdAt: serverTimestamp(),
+      nickname,
+      pinHash,
+      isAdmin:        false,
+      isAdminAccount: false,
+      disabled:       false,
+      totalPoints:    0,
+      exactScores:    0,
+      correctResults: 0,
+      championPick:   '',
+      topScorerPick:  '',
+      champBonus:     0,
+      topScorerBonus: 0,
+      photoURL:       '',
+      createdAt:      serverTimestamp(),
     });
 
+    // Account created — now log straight in
     saveSession(newRef.id, nickname, false);
-    document.getElementById('reg-name').value = '';
-    document.getElementById('reg-pin').value = '';
-    document.getElementById('reg-pin-confirm').value = '';
-    showToast(`Welcome, ${nickname}! 🎉`, 'success');
+    btn.textContent = '✅ Joined!';
+    await new Promise(r => setTimeout(r, 600)); // brief flash
     await initApp();
+
   } catch (e) {
     console.error('Registration error:', e);
-    errEl.textContent = `Error: ${e?.code || e?.message || 'try again'}`;
+    errEl.textContent = e?.code === 'permission-denied'
+      ? 'Permission denied — check Firestore rules.'
+      : `Error: ${e?.code || e?.message || 'please try again'}`;
     errEl.classList.add('show');
+    btn.disabled = false;
+    btn.textContent = 'Join ⚽';
   }
-  btn.disabled = false; btn.textContent = 'Join ⚽';
 }
 
 // ── Admin login (tap trophy ×5) ────────────────────────
