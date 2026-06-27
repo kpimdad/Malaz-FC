@@ -1483,9 +1483,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     showView('view-login'); initLoginView();
   });
 
-  // Login / Register tabs
-  document.getElementById('tab-login').addEventListener('click', () => switchLoginTab('login'));
-  document.getElementById('tab-register').addEventListener('click', () => switchLoginTab('register'));
+  // Login / Register switcher links
+  document.getElementById('go-register').addEventListener('click', e => { e.preventDefault(); switchLoginTab('register'); });
+  document.getElementById('go-login').addEventListener('click',    e => { e.preventDefault(); switchLoginTab('login'); });
 
   // Login
   document.getElementById('login-btn').addEventListener('click', handleLogin);
