@@ -117,7 +117,7 @@ Your app will be live at: `https://kpimdad.github.io/Malaz-FC/`
 
 | Outcome | Points |
 |---------|--------|
-| Exact score | 25 pts |
+| Exact score | 15 pts |
 | Correct result (wrong score) | 10 pts |
 | Wrong result | 0 pts |
 | Tournament winner bonus | +50 pts |

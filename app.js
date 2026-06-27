@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════
    MALAZ FC WC 2026 — app.js
    Knockout stage · Firebase Firestore · No build step
-   Scoring: 25 pts exact · 10 pts correct result · 0 wrong
+   Scoring: 15 pts exact · 10 pts correct result · 0 wrong
    Bonus:  +50 tournament winner · +30 top scoring team
    ═══════════════════════════════════════════════════════ */
 
@@ -412,14 +412,29 @@ async function handleAdminLogin() {
 // ═══════════════════════════════════════════════════════
 // CHAMPION / TOP SCORING TEAM PICKS
 // ═══════════════════════════════════════════════════════
-// All 32 R32 teams — admin can update TBDs to real names in Firestore
+// All 48 WC 2026 qualified nations — hardcoded so users can pick any team
+const ALL_WC2026_TEAMS = [
+  'Albania', 'Algeria', 'Argentina', 'Australia',
+  'Austria', 'Belgium', 'Bosnia & Herz.', 'Brazil',
+  'Cameroon', 'Canada', 'Colombia', 'Costa Rica',
+  'Croatia', 'Ecuador', 'Egypt', 'England',
+  'France', 'Germany', 'Honduras', 'Hungary',
+  'Indonesia', 'Iran', 'Iraq', 'Ivory Coast',
+  'Japan', 'Jordan', 'Mexico', 'Morocco',
+  'Netherlands', 'New Zealand', 'Nigeria', 'Norway',
+  'Panama', 'Portugal', 'Saudi Arabia', 'Scotland',
+  'Senegal', 'Serbia', 'South Africa', 'South Korea',
+  'Spain', 'Switzerland', 'Tunisia', 'Uruguay',
+  'USA', 'Uzbekistan', 'Venezuela',
+];
+
 function getKnownTeams() {
-  return [...new Set(
-    STATE.matches
-      .filter(m => m.stage === 'R32')
-      .flatMap(m => [m.teamA, m.teamB])
-      .filter(t => !t.startsWith('TBD'))
-  )].sort();
+  // Merge hardcoded nations with any admin-updated real team names from Firestore
+  const fromMatches = STATE.matches
+    .filter(m => m.stage === 'R32')
+    .flatMap(m => [m.teamA, m.teamB])
+    .filter(t => !t.startsWith('TBD'));
+  return [...new Set([...ALL_WC2026_TEAMS, ...fromMatches])].sort();
 }
 
 function populateTeamSelects() {
