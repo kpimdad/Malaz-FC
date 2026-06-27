@@ -1643,12 +1643,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.target.value.trim()) e.target.value = toSentenceCase(e.target.value);
   });
 
-  // Trophy tap → admin (touchend to prevent double-fire with synthetic click)
-  const trophyEl = document.getElementById('nav-trophy');
-  if (trophyEl) {
-    trophyEl.addEventListener('touchend', e => { e.preventDefault(); onTrophyTap(); }, { passive: false });
-    trophyEl.addEventListener('click', onTrophyTap);
-  }
+  // Trophy/badge tap → admin (touchend to prevent double-fire with synthetic click)
+  ['nav-trophy', 'login-badge'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('touchend', e => { e.preventDefault(); onTrophyTap(); }, { passive: false });
+      el.addEventListener('click', onTrophyTap);
+    }
+  });
 
   // Avatar → Change PIN
   document.getElementById('topbar-avatar-wrap')?.addEventListener('click', () => {

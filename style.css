@@ -191,6 +191,8 @@ body {
 .login-badge {
   font-size: 4.5rem; display: block; margin-bottom: 0.75rem;
   filter: drop-shadow(0 0 24px rgba(245,197,24,0.3));
+  cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent;
+  padding: 0.5rem;
 }
 .login-title {
   font-size: 2.6rem; font-weight: 900; color: #fff;
