@@ -40,7 +40,7 @@ function getFlag(teamName, fallback) {
 }
 
 // ── Scoring constants ───────────────────────────────────
-const PTS_EXACT   = 25;  // exact score
+const PTS_EXACT   = 15;  // exact score
 const PTS_RESULT  = 10;  // correct result / winner only
 const PTS_CHAMP   = 50;  // tournament winner bonus
 const PTS_TOPTEAM = 30;  // top scoring team bonus
