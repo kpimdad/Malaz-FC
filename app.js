@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════
    MALAZ FC WC 2026 — app.js
    Knockout stage · Firebase Firestore · No build step
-   Scoring: 15 pts exact · 10 pts correct result · 0 wrong
+   Scoring: 15 pts exact · 10 pts correct result · 0 wrong · +5 correct pen winner (draws only)
    Bonus:  +50 tournament winner · +30 top scoring team
    ═══════════════════════════════════════════════════════ */
 
@@ -42,6 +42,7 @@ function getFlag(teamName, fallback) {
 // ── Scoring constants ───────────────────────────────────
 const PTS_EXACT   = 15;  // exact score
 const PTS_RESULT  = 10;  // correct result / winner only
+const PTS_PEN     =  5;  // correct penalty winner (draws only)
 const PTS_CHAMP   = 50;  // tournament winner bonus
 const PTS_TOPTEAM = 30;  // top scoring team bonus
 
@@ -204,10 +205,13 @@ function getAvatarHTML(user, size = 36) {
 }
 
 // ── Scoring ────────────────────────────────────────────
-function calculatePoints(pA, pB, rA, rB) {
-  if (Math.sign(pA - pB) !== Math.sign(rA - rB)) return 0;  // wrong result
-  if (pA === rA && pB === rB) return PTS_EXACT;               // exact score
-  return PTS_RESULT;                                           // correct result only
+// pPen / rPen = 'A' | 'B' | null  (penalty winner — only relevant when both scores equal)
+function calculatePoints(pA, pB, rA, rB, pPen, rPen) {
+  if (Math.sign(pA - pB) !== Math.sign(rA - rB)) return 0;          // wrong result
+  let pts = (pA === rA && pB === rB) ? PTS_EXACT : PTS_RESULT;      // exact or correct
+  if (rA === rB && pA === pB && rPen && pPen && pPen === rPen)       // pen winner bonus
+    pts += PTS_PEN;
+  return pts;
 }
 
 // ── Firestore ──────────────────────────────────────────
@@ -221,9 +225,10 @@ async function fetchMatches() {
     teamB:   fs[m.matchId]?.teamB   ?? m.teamB,
     flagA:   fs[m.matchId]?.flagA   ?? m.flagA,
     flagB:   fs[m.matchId]?.flagB   ?? m.flagB,
-    resultA: fs[m.matchId]?.resultA ?? null,
-    resultB: fs[m.matchId]?.resultB ?? null,
-    status:  fs[m.matchId]?.status  ?? m.status,
+    resultA:   fs[m.matchId]?.resultA   ?? null,
+    resultB:   fs[m.matchId]?.resultB   ?? null,
+    penWinner: fs[m.matchId]?.penWinner ?? null,
+    status:    fs[m.matchId]?.status    ?? m.status,
   }));
 }
 
@@ -679,6 +684,23 @@ async function openPredictView(matchId) {
     el.dataset.val = t === 'a' ? initA : initB;
   });
 
+  // Penalty picker
+  const penPickerEl = document.getElementById('predict-pen-picker');
+  const penBtnA     = document.getElementById('pen-btn-a');
+  const penBtnB     = document.getElementById('pen-btn-b');
+  if (penPickerEl && penBtnA && penBtnB) {
+    penBtnA.textContent = `${getFlag(m.teamA, m.flagA)} ${m.teamA}`;
+    penBtnB.textContent = `${getFlag(m.teamB, m.flagB)} ${m.teamB}`;
+    const savedPen = pred?.penWinner ?? null;
+    penBtnA.classList.toggle('active', savedPen === 'A');
+    penBtnB.classList.toggle('active', savedPen === 'B');
+    penPickerEl.style.display = (initA === initB) ? 'block' : 'none';
+    penBtnA.disabled = locked;
+    penBtnB.disabled = locked;
+    penBtnA.onclick = () => { penBtnA.classList.add('active'); penBtnB.classList.remove('active'); };
+    penBtnB.onclick = () => { penBtnB.classList.add('active'); penBtnA.classList.remove('active'); };
+  }
+
   document.getElementById('predict-locked-msg').style.display = locked ? 'block' : 'none';
   document.getElementById('predict-save-btn').disabled = locked;
   document.querySelectorAll('.stepper-btn').forEach(b => b.disabled = locked);
@@ -690,6 +712,11 @@ function adjustScore(team, delta) {
   const next = Math.max(0, Math.min(20, parseInt(el.dataset.val, 10) + delta));
   el.dataset.val = next; el.textContent = next;
   el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+  // Show penalty picker only when scores are tied
+  const sA = parseInt(document.getElementById('score-a').dataset.val, 10);
+  const sB = parseInt(document.getElementById('score-b').dataset.val, 10);
+  const penPickerEl = document.getElementById('predict-pen-picker');
+  if (penPickerEl) penPickerEl.style.display = (sA === sB) ? 'block' : 'none';
 }
 
 async function savePrediction() {
@@ -706,11 +733,19 @@ async function savePrediction() {
   const lastMin  = isLastMinuteWindow(m);
   const existing = STATE.predictions[m.matchId];
 
+  // Penalty winner — only saved when predicting a draw
+  let penWinner = null;
+  if (scoreA === scoreB) {
+    if (document.getElementById('pen-btn-a')?.classList.contains('active')) penWinner = 'A';
+    else if (document.getElementById('pen-btn-b')?.classList.contains('active')) penWinner = 'B';
+  }
+
   let saved = false;
   try {
     const pred = {
       userId: STATE.session.userId, matchId: m.matchId,
       predictedA: scoreA, predictedB: scoreB,
+      penWinner,
       updatedAt: serverTimestamp(), lastMinute: lastMin,
     };
     if (!existing) pred.submittedAt = serverTimestamp();
@@ -796,7 +831,7 @@ async function openCompareModal(userId, nickname) {
     const mine   = STATE.predictions[m.matchId];
     const theirs = theirPreds[m.matchId];
     const myPts  = mine?.pointsAwarded ?? null;
-    const thPts  = theirs ? calculatePoints(theirs.predictedA, theirs.predictedB, m.resultA, m.resultB) : null;
+    const thPts  = theirs ? calculatePoints(theirs.predictedA, theirs.predictedB, m.resultA, m.resultB, theirs.penWinner, m.penWinner) : null;
     return `<div class="compare-row">
       <div class="compare-match-label">${getFlag(m.teamA, m.flagA)} ${m.teamA} <strong>${m.resultA}–${m.resultB}</strong> ${m.teamB} ${getFlag(m.teamB, m.flagB)}</div>
       <div class="compare-picks">
@@ -1111,11 +1146,12 @@ function renderAdminMatches() {
       <div class="admin-card-body" style="padding:0">
         ${byRound[round].sort((a,b) => new Date(a.kickoffUTC)-new Date(b.kickoffUTC)).map(m => {
           const hasResult = m.resultA != null && m.resultB != null;
+          const penLabel  = m.penWinner ? ` · pens: ${m.penWinner === 'A' ? m.teamA : m.teamB}` : '';
           return `
           <div class="match-admin-row" style="padding:.875rem 1rem">
             <div class="match-admin-teams">
               <span>${getFlag(m.teamA, m.flagA)} ${m.teamA} vs ${m.teamB} ${getFlag(m.teamB, m.flagB)}</span>
-              <span class="status-badge ${m.status}">${m.status}${hasResult ? ` · ${m.resultA}–${m.resultB}` : ''}</span>
+              <span class="status-badge ${m.status}">${m.status}${hasResult ? ` · ${m.resultA}–${m.resultB}${penLabel}` : ''}</span>
             </div>
             <div class="match-admin-meta">${formatKickoff(m.kickoffUTC)}</div>
             <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-top:0.4rem">
@@ -1132,6 +1168,14 @@ function renderAdminMatches() {
               <button class="btn btn-secondary btn-sm" style="width:auto;font-size:0.72rem" onclick="saveMatchResult('${m.matchId}')">
                 ${hasResult ? '✏️ Override' : 'Save Result'}
               </button>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.35rem">
+              <label style="font-size:0.78rem;color:var(--muted);white-space:nowrap">🥅 Pen winner:</label>
+              <select id="pen-winner-${m.matchId}" class="form-select" style="width:auto;font-size:0.8rem;padding:0.25rem 0.5rem">
+                <option value="">None</option>
+                <option value="A" ${m.penWinner === 'A' ? 'selected' : ''}>${m.teamA}</option>
+                <option value="B" ${m.penWinner === 'B' ? 'selected' : ''}>${m.teamB}</option>
+              </select>
             </div>
           </div>`;
         }).join('')}
@@ -1155,17 +1199,20 @@ async function saveMatchResult(matchId, autoRA, autoRB) {
   const rA = autoRA !== undefined ? autoRA : parseInt(document.getElementById(`res-a-${matchId}`)?.value, 10);
   const rB = autoRB !== undefined ? autoRB : parseInt(document.getElementById(`res-b-${matchId}`)?.value, 10);
   if (isNaN(rA) || isNaN(rB)) { showToast('Enter valid scores', 'error'); return; }
+  // Pen winner only valid when result is a draw
+  const penSel    = document.getElementById(`pen-winner-${matchId}`);
+  const penWinner = (rA === rB && penSel?.value) ? penSel.value : null;
   try {
-    await setDoc(doc(STATE.db, 'matches', matchId), { resultA: rA, resultB: rB, status: 'completed' }, { merge: true });
+    await setDoc(doc(STATE.db, 'matches', matchId), { resultA: rA, resultB: rB, penWinner: penWinner ?? null, status: 'completed' }, { merge: true });
     const pSnap = await getDocs(query(collection(STATE.db, 'predictions'), where('matchId', '==', matchId)));
     const batch = writeBatch(STATE.db);
     let total = 0, exact = 0, correct = 0;
     const deltas = {};
     pSnap.forEach(d => {
       const p = d.data();
-      const pts = calculatePoints(p.predictedA, p.predictedB, rA, rB);
+      const pts = calculatePoints(p.predictedA, p.predictedB, rA, rB, p.penWinner, penWinner);
       batch.update(d.ref, { pointsAwarded: pts });
-      total++; if (pts === PTS_EXACT) exact++; if (pts === PTS_RESULT) correct++;
+      total++; if (pts === PTS_EXACT) exact++; if (pts === PTS_RESULT || pts === PTS_RESULT + PTS_PEN) correct++;
       deltas[p.userId] = (deltas[p.userId] || 0) + (pts - (p.pointsAwarded ?? 0));
     });
     await batch.commit();
@@ -1176,9 +1223,9 @@ async function saveMatchResult(matchId, autoRA, autoRB) {
       if (s.exists()) uBatch.update(doc(STATE.db, 'users', uid), { totalPoints: (s.data().totalPoints || 0) + delta });
     }
     await uBatch.commit();
-    if (autoRA === undefined) showToast(`✅ ${total} predictions scored: ${exact} exact, ${correct} correct`, 'success');
+    if (autoRA === undefined) showToast(`✅ ${total} predictions scored: ${exact} exact, ${correct} correct result`, 'success');
     const m = STATE.matches.find(x => x.matchId === matchId);
-    if (m) { m.resultA = rA; m.resultB = rB; m.status = 'completed'; }
+    if (m) { m.resultA = rA; m.resultB = rB; m.penWinner = penWinner; m.status = 'completed'; }
   } catch (e) { showToast('Error saving result', 'error'); console.error(e); }
 }
 
@@ -1304,7 +1351,7 @@ async function rescoreAllMatches() {
       const batch = writeBatch(STATE.db);
       pSnap.forEach(d => {
         const p = d.data();
-        batch.update(d.ref, { pointsAwarded: calculatePoints(p.predictedA, p.predictedB, m.resultA, m.resultB) });
+        batch.update(d.ref, { pointsAwarded: calculatePoints(p.predictedA, p.predictedB, m.resultA, m.resultB, p.penWinner, m.penWinner) });
         predCount++;
       });
       await batch.commit();
@@ -1406,7 +1453,7 @@ async function saveAllBackdatePredictions() {
       if (!m) continue;
       const predId = `${userId}_${matchId}`;
       const pA = scores.a, pB = scores.b;
-      const pts = m.resultA != null ? calculatePoints(pA, pB, m.resultA, m.resultB) : null;
+      const pts = m.resultA != null ? calculatePoints(pA, pB, m.resultA, m.resultB, null, m.penWinner) : null;
       const existingSnap = await getDoc(doc(STATE.db, 'predictions', predId));
       const oldPts = existingSnap.exists() ? (existingSnap.data().pointsAwarded ?? 0) : 0;
       await setDoc(doc(STATE.db, 'predictions', predId), {
