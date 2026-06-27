@@ -220,21 +220,27 @@ body {
 }
 .form-input-lg {
   width: 100%; padding: 1rem 1.1rem;
-  background: #182a4e; border: 1.5px solid rgba(255,255,255,0.07);
-  border-radius: 14px; color: var(--text);
+  background: #182a4e !important; border: 1.5px solid rgba(255,255,255,0.1);
+  border-radius: 14px; color: #fff !important;
   font-size: 1.05rem; outline: none; appearance: none;
   transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-text-fill-color: #fff;
+  /* Override browser autofill */
+  box-shadow: 0 0 0 100px #182a4e inset !important;
 }
 .form-input-lg:focus {
-  border-color: rgba(245,197,24,0.5);
-  box-shadow: 0 0 0 3px rgba(245,197,24,0.08);
+  border-color: rgba(245,197,24,0.6);
+  box-shadow: 0 0 0 100px #182a4e inset, 0 0 0 3px rgba(245,197,24,0.12) !important;
 }
-.form-input-lg option { background: #0f1f3d; }
+.form-input-lg option { background: #0f1f3d; color: #fff; }
 select.form-input-lg {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%236b7a99' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 1rem center; padding-right: 2.5rem; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23aaa' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important; background-position: right 1rem center !important; padding-right: 2.5rem; cursor: pointer;
 }
-.pin-input.form-input-lg { letter-spacing: 0.7em; font-size: 1.25rem; text-align: center; padding-right: 3rem; }
+.pin-input.form-input-lg {
+  letter-spacing: 0.7em; font-size: 1.3rem; text-align: center; padding-right: 3rem;
+  -webkit-text-fill-color: #fff;
+}
 .pin-wrap { position: relative; }
 .pin-toggle {
   position: absolute; right: 1rem; top: 50%; transform: translateY(-50%);

@@ -470,16 +470,6 @@
 
 <script src="firebase-config.js"></script>
 <script src="matches.js"></script>
-<script>
-  // Give the ES-module shim time to resolve before app.js runs
-  document.addEventListener('DOMContentLoaded', () => {
-    const waitForFirebase = () => {
-      if (window.firebaseApp && window.firebaseFirestore) return;
-      setTimeout(waitForFirebase, 20);
-    };
-    waitForFirebase();
-  });
-</script>
 <script src="app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {

@@ -7,10 +7,27 @@
 
 'use strict';
 
-const { initializeApp }                                   = window.firebaseApp;
-const { getFirestore, collection, doc, getDoc, getDocs,
-        setDoc, updateDoc, query, where, orderBy,
-        serverTimestamp, writeBatch }                     = window.firebaseFirestore;
+// Firebase is loaded as an ES module — destructure lazily inside init
+let initializeApp, getFirestore, collection, doc, getDoc, getDocs,
+    setDoc, updateDoc, query, where, orderBy, serverTimestamp, writeBatch;
+
+async function waitForFirebase() {
+  let tries = 0;
+  while ((!window.firebaseApp || !window.firebaseFirestore) && tries < 150) {
+    await new Promise(r => setTimeout(r, 50));
+    tries++;
+  }
+  if (!window.firebaseApp || !window.firebaseFirestore) {
+    document.body.innerHTML = `<div style="text-align:center;padding:3rem;color:#e74c3c;font-family:sans-serif">
+      ⚠️ Firebase failed to load.<br>Check your internet connection and refresh.
+    </div>`;
+    throw new Error('Firebase not available');
+  }
+  ({ initializeApp }                                  = window.firebaseApp);
+  ({ getFirestore, collection, doc, getDoc, getDocs,
+     setDoc, updateDoc, query, where, orderBy,
+     serverTimestamp, writeBatch }                    = window.firebaseFirestore);
+}
 
 // ── Subdivision flag fix ────────────────────────────────
 const SUBDIVISION_FLAGS = {
@@ -241,10 +258,10 @@ function switchLoginTab(tab) {
   const isLogin = tab === 'login';
   document.getElementById('login-panel').style.display    = isLogin ? 'block' : 'none';
   document.getElementById('register-panel').style.display = isLogin ? 'none'  : 'block';
-  document.getElementById('tab-login').classList.toggle('active', isLogin);
-  document.getElementById('tab-register').classList.toggle('active', !isLogin);
   document.getElementById('login-error').classList.remove('show');
   document.getElementById('register-error').classList.remove('show');
+  if (!isLogin) document.getElementById('reg-name')?.focus();
+  else document.getElementById('login-pin')?.focus();
 }
 
 async function initLoginView() {
@@ -1461,6 +1478,7 @@ async function initApp() {
 
 // ── Wire up DOM events ─────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  await waitForFirebase();
   const app = initializeApp(FIREBASE_CONFIG);
   STATE.db  = getFirestore(app);
 
