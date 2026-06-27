@@ -1180,6 +1180,7 @@ function renderAdminMatches() {
               <button class="btn btn-secondary btn-sm" style="width:auto;font-size:0.72rem" onclick="saveMatchResult('${m.matchId}')">
                 ${hasResult ? '✏️ Override' : 'Save Result'}
               </button>
+              ${hasResult ? `<button class="btn btn-sm" style="width:auto;font-size:0.72rem;background:rgba(231,76,60,.15);color:var(--red);border:1px solid rgba(231,76,60,.3)" onclick="resetMatch('${m.matchId}')">🔄 Reset</button>` : ''}
             </div>
             <div style="display:flex;align-items:center;gap:0.5rem;margin-top:0.35rem">
               <label style="font-size:0.78rem;color:var(--muted);white-space:nowrap">🥅 Pen winner:</label>
@@ -1239,6 +1240,37 @@ async function saveMatchResult(matchId, autoRA, autoRB) {
     const m = STATE.matches.find(x => x.matchId === matchId);
     if (m) { m.resultA = rA; m.resultB = rB; m.penWinner = penWinner; m.status = 'completed'; }
   } catch (e) { showToast('Error saving result', 'error'); console.error(e); }
+}
+
+// ── Reset Match ────────────────────────────────────────
+async function resetMatch(matchId) {
+  if (!confirm('Reset this match? This clears the result, removes all scored points for it, and lets users predict again.')) return;
+  try {
+    // 1. Fetch all predictions for this match before wiping points
+    const pSnap = await getDocs(query(collection(STATE.db, 'predictions'), where('matchId', '==', matchId)));
+    // 2. Subtract each user's awarded points and null out pointsAwarded
+    const pBatch = writeBatch(STATE.db);
+    const deltas = {};
+    pSnap.forEach(d => {
+      const p = d.data();
+      if (p.pointsAwarded) deltas[p.userId] = (deltas[p.userId] || 0) - p.pointsAwarded;
+      pBatch.update(d.ref, { pointsAwarded: null });
+    });
+    await pBatch.commit();
+    const uBatch = writeBatch(STATE.db);
+    for (const [uid, delta] of Object.entries(deltas)) {
+      if (delta === 0) continue;
+      const s = await getDoc(doc(STATE.db, 'users', uid));
+      if (s.exists()) uBatch.update(doc(STATE.db, 'users', uid), { totalPoints: Math.max(0, (s.data().totalPoints || 0) + delta) });
+    }
+    await uBatch.commit();
+    // 3. Clear result fields on the match
+    await setDoc(doc(STATE.db, 'matches', matchId), { resultA: null, resultB: null, penWinner: null, status: 'upcoming' }, { merge: true });
+    const m = STATE.matches.find(x => x.matchId === matchId);
+    if (m) { m.resultA = null; m.resultB = null; m.penWinner = null; m.status = 'upcoming'; }
+    showToast('Match reset — users can predict again', 'success');
+    renderAdminMatches();
+  } catch (e) { showToast('Error resetting match: ' + e.message, 'error'); console.error(e); }
 }
 
 // ── Bonus Award ────────────────────────────────────────
