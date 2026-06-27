@@ -232,31 +232,40 @@ async function fetchUsers() {
 // ═══════════════════════════════════════════════════════
 // LOGIN VIEW
 // ═══════════════════════════════════════════════════════
+function toSentenceCase(str) {
+  const s = str.trim();
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function switchLoginTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('login-panel').style.display    = isLogin ? 'block' : 'none';
+  document.getElementById('register-panel').style.display = isLogin ? 'none'  : 'block';
+  document.getElementById('tab-login').classList.toggle('active', isLogin);
+  document.getElementById('tab-register').classList.toggle('active', !isLogin);
+  document.getElementById('login-error').classList.remove('show');
+  document.getElementById('register-error').classList.remove('show');
+}
+
 async function initLoginView() {
   const snap = await getDocs(collection(STATE.db, 'users'));
   const sel  = document.getElementById('login-user-select');
-  const userPinMap = {};
   sel.innerHTML = '<option value="">— Who are you? —</option>';
+  const names = [];
   snap.forEach(d => {
     if (d.data().disabled || d.data().isAdminAccount) return;
-    const o = document.createElement('option');
-    o.value = d.id; o.textContent = d.data().nickname;
-    sel.appendChild(o);
-    userPinMap[d.id] = d.data().pinHash || '';
+    names.push({ id: d.id, nickname: d.data().nickname });
   });
-
+  names.sort((a, b) => a.nickname.localeCompare(b.nickname));
+  names.forEach(({ id, nickname }) => {
+    const o = document.createElement('option');
+    o.value = id; o.textContent = nickname;
+    sel.appendChild(o);
+  });
   sel.addEventListener('change', () => {
-    const uid = sel.value;
-    const confirmGroup = document.getElementById('login-pin-confirm-group');
-    const pinLabel     = document.getElementById('login-pin-label');
-    const firstMsg     = document.getElementById('login-firsttime-msg');
-    const isNew = uid && !userPinMap[uid];
-    pinLabel.textContent = isNew ? 'Choose a 4-Digit PIN' : '4-Digit PIN';
-    confirmGroup.style.display = isNew ? 'block' : 'none';
-    firstMsg.style.display     = isNew ? 'block'  : 'none';
     document.getElementById('login-error').classList.remove('show');
     document.getElementById('login-pin').value = '';
-    if (uid) document.getElementById('login-pin').focus();
+    if (sel.value) document.getElementById('login-pin').focus();
   });
 }
 
@@ -273,19 +282,9 @@ async function handleLogin() {
     const snap = await getDoc(doc(STATE.db, 'users', userId));
     if (!snap.exists()) throw new Error('not found');
     const user = snap.data();
-    if (!user.pinHash) {
-      const confirm = document.getElementById('login-pin-confirm').value.trim();
-      if (pin !== confirm) {
-        errEl.textContent = 'PINs do not match — try again.'; errEl.classList.add('show');
-        btn.disabled = false; btn.textContent = 'Enter ⚽'; return;
-      }
-      await updateDoc(doc(STATE.db, 'users', userId), { pinHash: await hashPin(pin) });
-    } else {
-      if (await hashPin(pin) !== user.pinHash) throw new Error('wrong pin');
-    }
+    if (await hashPin(pin) !== user.pinHash) throw new Error('wrong pin');
     saveSession(userId, user.nickname, user.isAdmin || false);
     document.getElementById('login-pin').value = '';
-    document.getElementById('login-pin-confirm').value = '';
     await initApp();
   } catch {
     errEl.textContent = 'Wrong PIN — try again.'; errEl.classList.add('show');
@@ -293,6 +292,61 @@ async function handleLogin() {
     document.getElementById('login-pin').focus();
   }
   btn.disabled = false; btn.textContent = 'Enter ⚽';
+}
+
+async function handleRegister() {
+  const rawName = document.getElementById('reg-name').value.trim();
+  const pin     = document.getElementById('reg-pin').value.trim();
+  const confirm = document.getElementById('reg-pin-confirm').value.trim();
+  const errEl   = document.getElementById('register-error');
+  const btn     = document.getElementById('register-btn');
+  errEl.classList.remove('show');
+
+  if (!rawName) { errEl.textContent = 'Enter your name.'; errEl.classList.add('show'); return; }
+  if (rawName.length < 2) { errEl.textContent = 'Name must be at least 2 characters.'; errEl.classList.add('show'); return; }
+  if (!/^\d{4}$/.test(pin))  { errEl.textContent = 'PIN must be exactly 4 digits.'; errEl.classList.add('show'); return; }
+  if (pin !== confirm) { errEl.textContent = 'PINs do not match.'; errEl.classList.add('show'); return; }
+
+  const nickname = toSentenceCase(rawName);
+
+  btn.disabled = true; btn.textContent = 'Joining…';
+  try {
+    // Check for duplicate name (case-insensitive)
+    const snap = await getDocs(collection(STATE.db, 'users'));
+    let duplicate = false;
+    snap.forEach(d => {
+      if (!d.data().disabled &&
+          (d.data().nickname || '').toLowerCase().replace(/\s+/g,'') === nickname.toLowerCase().replace(/\s+/g,''))
+        duplicate = true;
+    });
+    if (duplicate) {
+      errEl.textContent = `"${nickname}" is already taken — try a different name.`;
+      errEl.classList.add('show');
+      btn.disabled = false; btn.textContent = 'Join ⚽'; return;
+    }
+
+    const newRef = doc(collection(STATE.db, 'users'));
+    await setDoc(newRef, {
+      nickname, pinHash: await hashPin(pin),
+      isAdmin: false, isAdminAccount: false, disabled: false,
+      totalPoints: 0, exactScores: 0, correctResults: 0,
+      championPick: '', topScorerPick: '',
+      champBonus: 0, topScorerBonus: 0,
+      photoURL: '', createdAt: serverTimestamp(),
+    });
+
+    saveSession(newRef.id, nickname, false);
+    document.getElementById('reg-name').value = '';
+    document.getElementById('reg-pin').value = '';
+    document.getElementById('reg-pin-confirm').value = '';
+    showToast(`Welcome, ${nickname}! 🎉`, 'success');
+    await initApp();
+  } catch (e) {
+    errEl.textContent = 'Error registering — try again.';
+    errEl.classList.add('show');
+    console.error(e);
+  }
+  btn.disabled = false; btn.textContent = 'Join ⚽';
 }
 
 // ── Admin login (tap trophy ×5) ────────────────────────
@@ -1432,6 +1486,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Login
   document.getElementById('login-btn').addEventListener('click', handleLogin);
   document.getElementById('login-pin').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+  document.getElementById('register-btn').addEventListener('click', handleRegister);
+  document.getElementById('reg-pin-confirm').addEventListener('keydown', e => { if (e.key === 'Enter') handleRegister(); });
+  // Auto sentence-case preview on name input
+  document.getElementById('reg-name').addEventListener('blur', e => {
+    if (e.target.value.trim()) e.target.value = toSentenceCase(e.target.value);
+  });
 
   // Admin modal
   document.getElementById('admin-login-btn').addEventListener('click', handleAdminLogin);

@@ -190,6 +190,10 @@ body {
 .pin-toggle { position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; font-size: 1rem; }
 .login-footer { text-align: center; margin-top: 1.5rem; color: var(--muted); font-size: 0.78rem; line-height: 1.7; }
 .login-footer strong { color: var(--text-dim); }
+.login-tabs { display: flex; width: 100%; max-width: 400px; background: var(--surface); border-radius: 12px; padding: 4px; margin-bottom: 0.75rem; gap: 4px; }
+.login-tab { flex: 1; padding: 0.55rem; border: none; border-radius: 9px; background: transparent; color: var(--muted); font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background 0.15s, color 0.15s; }
+.login-tab.active { background: var(--grass); color: #fff; }
+.form-hint { display: block; font-size: 0.72rem; color: var(--muted); margin-top: 0.3rem; }
 
 /* ═══════════════════════════════════════════════════════
    DATE / ROUND NAV
