@@ -359,9 +359,9 @@ async function handleRegister() {
     showToast(`Welcome, ${nickname}! 🎉`, 'success');
     await initApp();
   } catch (e) {
-    errEl.textContent = 'Error registering — try again.';
+    console.error('Registration error:', e);
+    errEl.textContent = `Error: ${e?.code || e?.message || 'try again'}`;
     errEl.classList.add('show');
-    console.error(e);
   }
   btn.disabled = false; btn.textContent = 'Join ⚽';
 }
@@ -1454,26 +1454,30 @@ async function initApp() {
   STATE.session = session;
 
   // Topbar
-  document.getElementById('topbar-avatar').innerHTML = getAvatarHTML({ nickname: session.nickname }, 32);
-  document.getElementById('nav-user-name').textContent = session.nickname;
-  document.getElementById('admin-nav-btn').style.display = session.isAdmin ? 'flex' : 'none';
+  const avatarEl = document.getElementById('topbar-avatar');
+  if (avatarEl) avatarEl.innerHTML = getAvatarHTML({ nickname: session.nickname }, 32);
+  const nameEl = document.getElementById('nav-user-name');
+  if (nameEl) nameEl.textContent = session.nickname;
+  const adminBtn = document.getElementById('admin-nav-btn');
+  if (adminBtn) adminBtn.style.display = session.isAdmin ? 'flex' : 'none';
 
   await fetchMatches();
   await fetchMyPredictions();
 
-  // Show/hide admin nav
   showView('view-home');
   buildRoundNav();
   startCountdownTimers();
 
   // Prompt champion picks if not set
-  const uSnap = await getDoc(doc(STATE.db, 'users', session.userId));
-  if (uSnap.exists()) {
-    const userData = uSnap.data();
-    if (!userData.championPick || !userData.topScorerPick) {
-      setTimeout(() => openChampionModal(userData), 800);
+  try {
+    const uSnap = await getDoc(doc(STATE.db, 'users', session.userId));
+    if (uSnap.exists()) {
+      const userData = uSnap.data();
+      if (!userData.championPick || !userData.topScorerPick) {
+        setTimeout(() => openChampionModal(userData), 1000);
+      }
     }
-  }
+  } catch (e) { console.warn('Could not fetch user doc for champion prompt', e); }
 }
 
 // ── Wire up DOM events ─────────────────────────────────
