@@ -304,7 +304,12 @@ async function handleLogin() {
     const snap = await getDoc(doc(STATE.db, 'users', userId));
     if (!snap.exists()) throw new Error('not found');
     const user = snap.data();
-    if (await hashPin(pin) !== user.pinHash) throw new Error('wrong pin');
+    if (!user.pinHash) {
+      // First login / PIN was reset — save entered PIN as the new one
+      await updateDoc(doc(STATE.db, 'users', userId), { pinHash: await hashPin(pin) });
+    } else if (await hashPin(pin) !== user.pinHash) {
+      throw new Error('wrong pin');
+    }
     saveSession(userId, user.nickname, user.isAdmin || false);
     document.getElementById('login-pin').value = '';
     await initApp();
@@ -388,7 +393,7 @@ let _adminTapCount = 0, _adminTapTimer = null;
 function onTrophyTap() {
   _adminTapCount++;
   clearTimeout(_adminTapTimer);
-  _adminTapTimer = setTimeout(() => { _adminTapCount = 0; }, 2000);
+  _adminTapTimer = setTimeout(() => { _adminTapCount = 0; }, 3000);
   if (_adminTapCount >= 5) {
     _adminTapCount = 0;
     document.getElementById('admin-login-modal').style.display = 'flex';
@@ -1636,6 +1641,44 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('reg-pin-confirm').addEventListener('keydown', e => { if (e.key === 'Enter') handleRegister(); });
   document.getElementById('reg-name').addEventListener('blur', e => {
     if (e.target.value.trim()) e.target.value = toSentenceCase(e.target.value);
+  });
+
+  // Avatar → Change PIN
+  document.getElementById('topbar-avatar-wrap')?.addEventListener('click', () => {
+    if (!STATE.session) return;
+    ['change-pin-current','change-pin-new','change-pin-confirm'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    const err = document.getElementById('change-pin-error');
+    if (err) { err.style.display = 'none'; }
+    document.getElementById('change-pin-modal').style.display = 'flex';
+    document.getElementById('change-pin-current').focus();
+  });
+  document.getElementById('change-pin-close').addEventListener('click', () => {
+    document.getElementById('change-pin-modal').style.display = 'none';
+  });
+  document.getElementById('change-pin-btn').addEventListener('click', async () => {
+    const curr    = document.getElementById('change-pin-current').value.trim();
+    const next    = document.getElementById('change-pin-new').value.trim();
+    const confirm = document.getElementById('change-pin-confirm').value.trim();
+    const errEl   = document.getElementById('change-pin-error');
+    const show = msg => { errEl.textContent = msg; errEl.style.display = 'block'; };
+    errEl.style.display = 'none';
+    if (!/^\d{4}$/.test(curr)) return show('Current PIN must be 4 digits.');
+    if (!/^\d{4}$/.test(next)) return show('New PIN must be 4 digits.');
+    if (next !== confirm)       return show('New PINs don\'t match.');
+    if (curr === next)          return show('New PIN must be different.');
+    const btn = document.getElementById('change-pin-btn');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const snap = await getDoc(doc(STATE.db, 'users', STATE.session.userId));
+      if (!snap.exists()) throw new Error('User not found');
+      if (await hashPin(curr) !== snap.data().pinHash) { btn.disabled = false; btn.textContent = 'Update PIN'; return show('Current PIN is wrong.'); }
+      await updateDoc(doc(STATE.db, 'users', STATE.session.userId), { pinHash: await hashPin(next) });
+      document.getElementById('change-pin-modal').style.display = 'none';
+      showToast('PIN updated ✓', 'success');
+    } catch (e) { show('Error: ' + e.message); }
+    btn.disabled = false; btn.textContent = 'Update PIN';
   });
 
   // Admin modal
