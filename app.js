@@ -39,6 +39,9 @@ function getFlag(teamName, fallback) {
   return SUBDIVISION_FLAGS[teamName] || fallback || '🏳️';
 }
 
+// ── Registration gate ──────────────────────────────────
+const REGISTRATION_OPEN = false;  // set true to re-open self-registration
+
 // ── Scoring constants ───────────────────────────────────
 const PTS_EXACT   = 15;  // exact score
 const PTS_RESULT  = 10;  // correct result / winner only
@@ -270,6 +273,10 @@ function switchLoginTab(tab) {
 }
 
 async function initLoginView() {
+  // Hide register link when registration is closed
+  const goRegEl = document.getElementById('go-register');
+  if (goRegEl) goRegEl.style.display = REGISTRATION_OPEN ? '' : 'none';
+
   const snap = await getDocs(collection(STATE.db, 'users'));
   const sel  = document.getElementById('login-user-select');
   sel.innerHTML = '<option value="">— Who are you? —</option>';
@@ -322,12 +329,19 @@ async function handleLogin() {
 }
 
 async function handleRegister() {
+  const errEl = document.getElementById('register-error');
+  const btn   = document.getElementById('register-btn');
+  errEl.classList.remove('show');
+
+  if (!REGISTRATION_OPEN) {
+    errEl.textContent = 'Registration is closed. Ask the admin to add you.';
+    errEl.classList.add('show');
+    return;
+  }
+
   const rawName = document.getElementById('reg-name').value.trim();
   const pin     = document.getElementById('reg-pin').value.trim();
   const confirm = document.getElementById('reg-pin-confirm').value.trim();
-  const errEl   = document.getElementById('register-error');
-  const btn     = document.getElementById('register-btn');
-  errEl.classList.remove('show');
 
   if (!rawName) { errEl.textContent = 'Enter your name.'; errEl.classList.add('show'); return; }
   if (rawName.length < 2) { errEl.textContent = 'Name must be at least 2 characters.'; errEl.classList.add('show'); return; }
