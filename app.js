@@ -1103,23 +1103,30 @@ function setAdminTab(tab) {
 }
 
 async function fixAllNameCasing() {
+  console.log('[fixAllNameCasing] called');
   try {
-    const snap = await getDocs(collection(STATE.db, 'users'));
-    const b = writeBatch(STATE.db);
+    const _getDocs    = window.firebaseFirestore.getDocs;
+    const _collection = window.firebaseFirestore.collection;
+    const _writeBatch = window.firebaseFirestore.writeBatch;
+    const _doc        = window.firebaseFirestore.doc;
+
+    const snap = await _getDocs(_collection(STATE.db, 'users'));
+    const b = _writeBatch(STATE.db);
     let count = 0;
     snap.forEach(d => {
       const raw = (d.data().nickname || '').trim();
       if (!raw) return;
       const fixed = toSentenceCase(raw);
-      b.update(doc(STATE.db, 'users', d.id), { nickname: fixed });
+      console.log(`[fix] "${raw}" → "${fixed}"`);
+      b.update(_doc(STATE.db, 'users', d.id), { nickname: fixed });
       count++;
     });
     await b.commit();
-    showToast(`Updated ${count} name${count !== 1 ? 's' : ''} to sentence case`, 'success');
+    showToast(`Updated ${count} name${count !== 1 ? 's' : ''} to sentence case ✓`, 'success');
     renderAdminUsers();
   } catch (e) {
-    showToast('Error fixing names: ' + e.message, 'error');
-    console.error(e);
+    console.error('[fixAllNameCasing] error:', e);
+    showToast('Error: ' + e.message, 'error');
   }
 }
 
@@ -1160,14 +1167,16 @@ async function renderAdminUsers() {
         const nickname = toSentenceCase(raw);
         saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
         try {
-          await updateDoc(doc(STATE.db, 'users', uid), { nickname });
+          const _updateDoc = window.firebaseFirestore.updateDoc;
+          const _doc       = window.firebaseFirestore.doc;
+          await _updateDoc(_doc(STATE.db, 'users', uid), { nickname });
           modal.style.display = 'none';
           showToast(`Renamed to "${nickname}"`, 'success');
           renderAdminUsers();
         } catch (e) {
           errEl.textContent = 'Error: ' + e.message;
           errEl.style.display = 'block';
-          console.error(e);
+          console.error('[rename] error:', e);
         } finally {
           saveBtn.disabled = false; saveBtn.textContent = 'Save';
         }
