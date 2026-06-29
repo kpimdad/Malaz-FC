@@ -1097,6 +1097,21 @@ function setAdminTab(tab) {
   if (tab === 'audit')    {}
 }
 
+async function fixAllNameCasing() {
+  if (!confirm('Convert all player names to sentence case? This updates Firestore.')) return;
+  const snap = await getDocs(collection(STATE.db, 'users'));
+  const batch2 = writeBatch(STATE.db);
+  let count = 0;
+  snap.forEach(d => {
+    const raw = d.data().nickname || '';
+    const fixed = raw.trim().charAt(0).toUpperCase() + raw.trim().slice(1).toLowerCase();
+    if (fixed !== raw) { batch2.update(doc(STATE.db, 'users', d.id), { nickname: fixed }); count++; }
+  });
+  await batch2.commit();
+  showToast(`Fixed casing on ${count} name${count !== 1 ? 's' : ''}`, 'success');
+  renderAdminUsers();
+}
+
 async function renderAdminUsers() {
   await fetchUsers();
   const list = document.getElementById('admin-user-list');
@@ -1769,6 +1784,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('#view-admin .tab-btn').forEach(btn =>
     btn.addEventListener('click', () => setAdminTab(btn.dataset.tab)));
   document.getElementById('admin-add-user-btn').addEventListener('click', addAdminUser);
+  document.getElementById('fix-casing-btn').addEventListener('click', fixAllNameCasing);
   document.getElementById('recalc-match-btn').addEventListener('click', recalcMatch);
   document.getElementById('recalc-all-btn').addEventListener('click', recalcAll);
   document.getElementById('rescore-all-btn').addEventListener('click', rescoreAllMatches);
