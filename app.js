@@ -258,8 +258,13 @@ async function fetchUsers() {
 // LOGIN VIEW
 // ═══════════════════════════════════════════════════════
 function toSentenceCase(str) {
-  const s = str.trim();
-  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  // Title case: each word capitalised; short words (≤2 chars) go ALL CAPS (e.g. "kp" → "KP")
+  return str.trim().split(/\s+/).map(word => {
+    if (!word) return '';
+    return word.length <= 2
+      ? word.toUpperCase()
+      : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join(' ');
 }
 
 function switchLoginTab(tab) {
@@ -1105,7 +1110,7 @@ async function fixAllNameCasing() {
     snap.forEach(d => {
       const raw = (d.data().nickname || '').trim();
       if (!raw) return;
-      const fixed = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+      const fixed = toSentenceCase(raw);
       b.update(doc(STATE.db, 'users', d.id), { nickname: fixed });
       count++;
     });
@@ -1152,7 +1157,7 @@ async function renderAdminUsers() {
       const doSave = async () => {
         const raw = input.value.trim();
         if (!raw) { errEl.textContent = 'Name cannot be empty.'; errEl.style.display = 'block'; return; }
-        const nickname = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+        const nickname = toSentenceCase(raw);
         saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
         try {
           await updateDoc(doc(STATE.db, 'users', uid), { nickname });
@@ -1191,7 +1196,7 @@ async function renderAdminUsers() {
 async function addAdminUser() {
   const raw = document.getElementById('new-nickname').value.trim();
   if (!raw) { showToast('Nickname required', 'error'); return; }
-  const nickname = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+  const nickname = toSentenceCase(raw);
   try {
     const existing = await getDocs(collection(STATE.db, 'users'));
     let duplicate = false;
