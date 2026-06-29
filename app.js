@@ -1098,18 +1098,24 @@ function setAdminTab(tab) {
 }
 
 async function fixAllNameCasing() {
-  if (!confirm('Convert all player names to sentence case? This updates Firestore.')) return;
-  const snap = await getDocs(collection(STATE.db, 'users'));
-  const batch2 = writeBatch(STATE.db);
-  let count = 0;
-  snap.forEach(d => {
-    const raw = d.data().nickname || '';
-    const fixed = raw.trim().charAt(0).toUpperCase() + raw.trim().slice(1).toLowerCase();
-    if (fixed !== raw) { batch2.update(doc(STATE.db, 'users', d.id), { nickname: fixed }); count++; }
-  });
-  await batch2.commit();
-  showToast(`Fixed casing on ${count} name${count !== 1 ? 's' : ''}`, 'success');
-  renderAdminUsers();
+  try {
+    const snap = await getDocs(collection(STATE.db, 'users'));
+    const b = writeBatch(STATE.db);
+    let count = 0;
+    snap.forEach(d => {
+      const raw = (d.data().nickname || '').trim();
+      if (!raw) return;
+      const fixed = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+      b.update(doc(STATE.db, 'users', d.id), { nickname: fixed });
+      count++;
+    });
+    await b.commit();
+    showToast(`Updated ${count} name${count !== 1 ? 's' : ''} to sentence case`, 'success');
+    renderAdminUsers();
+  } catch (e) {
+    showToast('Error fixing names: ' + e.message, 'error');
+    console.error(e);
+  }
 }
 
 async function renderAdminUsers() {
@@ -1132,13 +1138,38 @@ async function renderAdminUsers() {
     </div>`).join('');
 
   list.querySelectorAll('[data-rename-user]').forEach(btn => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const uid = btn.dataset.renameUser, current = btn.dataset.nickname;
-      const raw = prompt(`Rename "${current}" to:`, current);
-      if (!raw || raw.trim() === current) return;
-      const nickname = raw.trim().charAt(0).toUpperCase() + raw.trim().slice(1).toLowerCase();
-      await updateDoc(doc(STATE.db, 'users', uid), { nickname });
-      showToast(`Renamed to "${nickname}"`, 'success'); renderAdminUsers();
+      const modal   = document.getElementById('rename-user-modal');
+      const input   = document.getElementById('rename-user-input');
+      const errEl   = document.getElementById('rename-user-error');
+      const saveBtn = document.getElementById('rename-user-btn');
+      input.value = current;
+      errEl.style.display = 'none';
+      modal.style.display = 'flex';
+      input.focus(); input.select();
+
+      const doSave = async () => {
+        const raw = input.value.trim();
+        if (!raw) { errEl.textContent = 'Name cannot be empty.'; errEl.style.display = 'block'; return; }
+        const nickname = raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+        saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+        try {
+          await updateDoc(doc(STATE.db, 'users', uid), { nickname });
+          modal.style.display = 'none';
+          showToast(`Renamed to "${nickname}"`, 'success');
+          renderAdminUsers();
+        } catch (e) {
+          errEl.textContent = 'Error: ' + e.message;
+          errEl.style.display = 'block';
+          console.error(e);
+        } finally {
+          saveBtn.disabled = false; saveBtn.textContent = 'Save';
+        }
+      };
+
+      saveBtn.onclick = doSave;
+      input.onkeydown = e => { if (e.key === 'Enter') doSave(); };
     });
   });
   list.querySelectorAll('[data-resetpin-user]').forEach(btn => {
@@ -1694,6 +1725,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   document.getElementById('change-pin-close').addEventListener('click', () => {
     document.getElementById('change-pin-modal').style.display = 'none';
+  });
+  document.getElementById('rename-user-close').addEventListener('click', () => {
+    document.getElementById('rename-user-modal').style.display = 'none';
   });
   document.getElementById('change-pin-btn').addEventListener('click', async () => {
     const curr    = document.getElementById('change-pin-current').value.trim();

@@ -418,6 +418,27 @@
   </div>
 </div>
 
+<!-- Rename user modal -->
+<div class="modal-overlay" id="rename-user-modal" style="display:none" role="dialog">
+  <div class="modal-card" style="max-width:340px">
+    <button class="modal-close" id="rename-user-close">×</button>
+    <div class="modal-header">
+      <div class="modal-icon">✏️</div>
+      <h2 class="modal-title">Rename Player</h2>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">New Name</label>
+        <input class="form-input" id="rename-user-input" type="text" maxlength="30" placeholder="Enter new name">
+      </div>
+      <div class="form-error" id="rename-user-error" style="display:none"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="rename-user-btn">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- Change PIN modal -->
 <div class="modal-overlay" id="change-pin-modal" style="display:none" role="dialog">
   <div class="modal-card" style="max-width:340px">
