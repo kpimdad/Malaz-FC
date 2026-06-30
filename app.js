@@ -818,8 +818,8 @@ async function computeUserAccuracy() {
       // exact = 15 or 20 (exact+pen); result = 10 or 15 (result+pen, but 15 collides with exact)
       if (p.pointsAwarded >= PTS_EXACT)  { exactMap[p.userId]  = (exactMap[p.userId]  || 0) + 1; }
       if (p.pointsAwarded === PTS_RESULT) { winnerMap[p.userId] = (winnerMap[p.userId] || 0) + 1; }
-      // pen bonus: awarded when pointsAwarded includes +5 (20 = exact+pen, 15 = result+pen)
-      if (p.pointsAwarded === PTS_EXACT + PTS_PEN || p.pointsAwarded === PTS_RESULT + PTS_PEN) {
+      // pen bonus: only 20 (exact+pen) is unambiguous — result+pen=15 collides with PTS_EXACT
+      if (p.pointsAwarded === PTS_EXACT + PTS_PEN) {
         penMap[p.userId] = (penMap[p.userId] || 0) + 1;
       }
     }
