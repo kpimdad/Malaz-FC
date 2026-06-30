@@ -565,6 +565,9 @@ select.form-input-lg {
 .compare-pick.exact .compare-pts  { color: var(--green); }
 .compare-pick.winner .compare-pts { color: var(--grass-lt); }
 .compare-pick.wrong  .compare-pts { color: var(--red); }
+.compare-pen { font-size: 0.7rem; font-weight: 600; padding: 0.15rem 0.4rem; border-radius: 4px; }
+.compare-pen.correct { color: var(--gold); }
+.compare-pen.wrong   { color: var(--muted); text-decoration: line-through; }
 
 /* ═══════════════════════════════════════════════════════
    MY PREDICTIONS

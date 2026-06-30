@@ -809,14 +809,19 @@ function renderDeadlineBanner() {
 // ═══════════════════════════════════════════════════════
 async function computeUserAccuracy() {
   const snap = await getDocs(collection(STATE.db, 'predictions'));
-  const allPreds = {}, finished = {}, exactMap = {}, winnerMap = {};
+  const allPreds = {}, finished = {}, exactMap = {}, winnerMap = {}, penMap = {};
   snap.forEach(d => {
     const p = d.data();
     allPreds[p.userId] = (allPreds[p.userId] || 0) + 1;
     if (p.pointsAwarded != null) {
       finished[p.userId] = (finished[p.userId] || 0) + 1;
-      if (p.pointsAwarded === PTS_EXACT)  { exactMap[p.userId]  = (exactMap[p.userId]  || 0) + 1; }
+      // exact = 15 or 20 (exact+pen); result = 10 or 15 (result+pen, but 15 collides with exact)
+      if (p.pointsAwarded >= PTS_EXACT)  { exactMap[p.userId]  = (exactMap[p.userId]  || 0) + 1; }
       if (p.pointsAwarded === PTS_RESULT) { winnerMap[p.userId] = (winnerMap[p.userId] || 0) + 1; }
+      // pen bonus: awarded when pointsAwarded includes +5 (20 = exact+pen, 15 = result+pen)
+      if (p.pointsAwarded === PTS_EXACT + PTS_PEN || p.pointsAwarded === PTS_RESULT + PTS_PEN) {
+        penMap[p.userId] = (penMap[p.userId] || 0) + 1;
+      }
     }
   });
   STATE.users.forEach(u => {
@@ -825,6 +830,7 @@ async function computeUserAccuracy() {
     u.finishedPreds        = total;
     u.computedExact        = exactMap[u.id]   || 0;
     u.computedWinner       = winnerMap[u.id]  || 0;
+    u.computedPen          = penMap[u.id]     || 0;
     u.exactAccuracy        = total >= 1 ? Math.round(((exactMap[u.id]  || 0) / total) * 100) : null;
     u.resultAccuracy       = total >= 1 ? Math.round(((winnerMap[u.id] || 0) / total) * 100) : null;
   });
@@ -850,8 +856,23 @@ async function openCompareModal(userId, nickname) {
     return;
   }
 
-  const ptsCls   = p => p === PTS_EXACT ? 'exact' : p === PTS_RESULT ? 'winner' : p === 0 ? 'wrong' : 'none';
-  const ptsLabel = p => p === PTS_EXACT ? `+${PTS_EXACT} ⚽` : p === PTS_RESULT ? `+${PTS_RESULT} ✓` : p === 0 ? '0 pts' : '–';
+  const ptsCls   = p => p >= PTS_EXACT ? 'exact' : p === PTS_RESULT ? 'winner' : p === 0 ? 'wrong' : 'none';
+  const ptsLabel = p => {
+    if (p === null) return '–';
+    if (p === PTS_EXACT + PTS_PEN) return `+${p} ⚽🥅`;
+    if (p >= PTS_EXACT)            return `+${p} ⚽`;
+    if (p === PTS_RESULT + PTS_PEN) return `+${p} ✓🥅`;
+    if (p === PTS_RESULT)           return `+${p} ✓`;
+    return '0 pts';
+  };
+
+  // pen winner label: show team name if pen was picked
+  const penLabel = (pred, m) => {
+    if (!m.penWinner || !pred?.penWinner) return '';
+    const team = pred.penWinner === 'A' ? m.teamA : m.teamB;
+    const correct = pred.penWinner === m.penWinner;
+    return `<span class="compare-pen ${correct ? 'correct' : 'wrong'}">🥅 ${team}${correct ? ' ✓' : ' ✗'}</span>`;
+  };
 
   body.innerHTML = completed.map(m => {
     const mine   = STATE.predictions[m.matchId];
@@ -859,16 +880,18 @@ async function openCompareModal(userId, nickname) {
     const myPts  = mine?.pointsAwarded ?? null;
     const thPts  = theirs ? calculatePoints(theirs.predictedA, theirs.predictedB, m.resultA, m.resultB, theirs.penWinner, m.penWinner) : null;
     return `<div class="compare-row">
-      <div class="compare-match-label">${getFlag(m.teamA, m.flagA)} ${m.teamA} <strong>${m.resultA}–${m.resultB}</strong> ${m.teamB} ${getFlag(m.teamB, m.flagB)}</div>
+      <div class="compare-match-label">${getFlag(m.teamA, m.flagA)} ${m.teamA} <strong>${m.resultA}–${m.resultB}</strong>${m.penWinner ? ` (pen: ${m.penWinner === 'A' ? m.teamA : m.teamB})` : ''} ${m.teamB} ${getFlag(m.teamB, m.flagB)}</div>
       <div class="compare-picks">
         <div class="compare-pick ${ptsCls(myPts)}">
           <span class="compare-who">You</span>
           <span class="compare-score">${mine ? `${mine.predictedA}–${mine.predictedB}` : '–'}</span>
+          ${penLabel(mine, m)}
           <span class="compare-pts">${ptsLabel(myPts)}</span>
         </div>
         <div class="compare-pick ${ptsCls(thPts)}">
           <span class="compare-who">${nickname}</span>
           <span class="compare-score">${theirs ? `${theirs.predictedA}–${theirs.predictedB}` : '–'}</span>
+          ${penLabel(theirs, m)}
           <span class="compare-pts">${ptsLabel(thPts)}</span>
         </div>
       </div>
@@ -898,6 +921,7 @@ function renderLeaderboardTable(users) {
     const pts    = u.totalPoints    || 0;
     const exact  = u.computedExact  || 0;
     const winner = u.computedWinner || 0;
+    const pen    = u.computedPen    || 0;
     const played = u.predictionsSubmitted || 0;
     const isMe   = u.id === myId;
     const rankCls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
@@ -929,6 +953,7 @@ function renderLeaderboardTable(users) {
       <td class="lb-td-num lb-td-played">${played}</td>
       <td class="lb-td-num lb-td-exact">${exact}</td>
       <td class="lb-td-num lb-td-result">${winner}</td>
+      <td class="lb-td-num lb-td-pen">${pen > 0 ? `<span style="color:var(--gold)">${pen}</span>` : '–'}</td>
       <td class="lb-td-pts"><span class="lb-pts">${pts}</span></td>
     </tr>`;
 
@@ -936,7 +961,7 @@ function renderLeaderboardTable(users) {
       ? `<button class="lb-drawer-compare" data-uid="${u.id}" data-nickname="${u.nickname}">Compare ↗</button>` : '';
 
     const drawerRow = `<tr class="lb-tr-drawer" data-uid="${u.id}">
-      <td colspan="8">
+      <td colspan="9">
         <div class="lb-drawer">
           <div class="lb-drawer-picks">
             <span class="lb-drawer-pick"><span class="lb-drawer-lbl">🏆 Winner pick</span>${champ}${champBonus ? ` <span class="bonus-awarded">+${champBonus}pts</span>` : ''}</span>
@@ -961,6 +986,7 @@ function renderLeaderboardTable(users) {
           <th class="lb-th-num">Played</th>
           <th class="lb-th-num">Exact</th>
           <th class="lb-th-num">Result</th>
+          <th class="lb-th-num">🥅</th>
           <th class="lb-th-pts">Pts</th>
         </tr>
       </thead>
