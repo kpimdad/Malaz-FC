@@ -40,7 +40,7 @@ function getFlag(teamName, fallback) {
 }
 
 // ── Registration gate ──────────────────────────────────
-const REGISTRATION_OPEN = true;   // set false to close self-registration
+const REGISTRATION_OPEN = false;  // set true to re-open self-registration
 
 // ── Scoring constants ───────────────────────────────────
 const PTS_EXACT   = 15;  // exact score
