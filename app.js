@@ -866,10 +866,13 @@ async function openCompareModal(userId, nickname) {
     return '0 pts';
   };
 
-  // pen winner label: show team name if pen was picked
+  // pen winner label: show whenever user made a pick, with ✓/✗ only if match had penalties
   const penLabel = (pred, m) => {
-    if (!m.penWinner || !pred?.penWinner) return '';
+    if (!pred?.penWinner) return '';
     const team = pred.penWinner === 'A' ? m.teamA : m.teamB;
+    if (!m.penWinner) {
+      return `<span class="compare-pen neutral">🥅 ${team}</span>`;
+    }
     const correct = pred.penWinner === m.penWinner;
     return `<span class="compare-pen ${correct ? 'correct' : 'wrong'}">🥅 ${team}${correct ? ' ✓' : ' ✗'}</span>`;
   };
