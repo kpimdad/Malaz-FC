@@ -74,35 +74,35 @@ const MATCHES = [
 
   // ── ROUND OF 16 ──────────────────────────────────────
   { matchId:'m089', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m073)', flagA:'🏳️', teamB:'TBD (W m075)',      flagB:'🏳️',
+    teamA:'Canada',       flagA:'🇨🇦', teamB:'Morocco',           flagB:'🇲🇦',
     kickoffUTC:'2026-07-04T17:00:00Z', venue:'Houston',           status:'upcoming' },
 
   { matchId:'m090', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m074)', flagA:'🏳️', teamB:'TBD (W m077)',      flagB:'🏳️',
+    teamA:'Paraguay',     flagA:'🇵🇾', teamB:'France',            flagB:'🇫🇷',
     kickoffUTC:'2026-07-04T21:00:00Z', venue:'Philadelphia',      status:'upcoming' },
 
   { matchId:'m091', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m076)', flagA:'🏳️', teamB:'TBD (W m078)',      flagB:'🏳️',
+    teamA:'Brazil',       flagA:'🇧🇷', teamB:'Norway',            flagB:'🇳🇴',
     kickoffUTC:'2026-07-05T20:00:00Z', venue:'New York',          status:'upcoming' },
 
   { matchId:'m092', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m079)', flagA:'🏳️', teamB:'TBD (W m080)',      flagB:'🏳️',
+    teamA:'Mexico',       flagA:'🇲🇽', teamB:'England',           flagB:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',
     kickoffUTC:'2026-07-06T00:00:00Z', venue:'Mexico City',       status:'upcoming' },
 
   { matchId:'m093', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m083)', flagA:'🏳️', teamB:'TBD (W m084)',      flagB:'🏳️',
+    teamA:'Portugal',     flagA:'🇵🇹', teamB:'Spain',             flagB:'🇪🇸',
     kickoffUTC:'2026-07-06T19:00:00Z', venue:'Dallas',            status:'upcoming' },
 
   { matchId:'m094', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m081)', flagA:'🏳️', teamB:'TBD (W m082)',      flagB:'🏳️',
+    teamA:'USA',          flagA:'🇺🇸', teamB:'Belgium',           flagB:'🇧🇪',
     kickoffUTC:'2026-07-07T00:00:00Z', venue:'Seattle',           status:'upcoming' },
 
   { matchId:'m095', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m086)', flagA:'🏳️', teamB:'TBD (W m088)',      flagB:'🏳️',
+    teamA:'Argentina',    flagA:'🇦🇷', teamB:'Egypt',             flagB:'🇪🇬',
     kickoffUTC:'2026-07-07T16:00:00Z', venue:'Atlanta',           status:'upcoming' },
 
   { matchId:'m096', stage:'R16', matchDay:'Round of 16', group:null,
-    teamA:'TBD (W m085)', flagA:'🏳️', teamB:'TBD (W m087)',      flagB:'🏳️',
+    teamA:'Switzerland',  flagA:'🇨🇭', teamB:'Colombia',          flagB:'🇨🇴',
     kickoffUTC:'2026-07-07T20:00:00Z', venue:'Vancouver',         status:'upcoming' },
 
   // ── QUARTER-FINALS ────────────────────────────────────
