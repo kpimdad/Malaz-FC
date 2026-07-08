@@ -107,19 +107,19 @@ const MATCHES = [
 
   // ── QUARTER-FINALS ────────────────────────────────────
   { matchId:'m097', stage:'QF', matchDay:'Quarter-Final', group:null,
-    teamA:'TBD (W m089)', flagA:'🏳️', teamB:'TBD (W m090)',      flagB:'🏳️',
+    teamA:'Morocco',      flagA:'🇲🇦', teamB:'France',            flagB:'🇫🇷',
     kickoffUTC:'2026-07-09T20:00:00Z', venue:'Boston',            status:'upcoming' },
 
   { matchId:'m098', stage:'QF', matchDay:'Quarter-Final', group:null,
-    teamA:'TBD (W m093)', flagA:'🏳️', teamB:'TBD (W m094)',      flagB:'🏳️',
+    teamA:'Spain',        flagA:'🇪🇸', teamB:'Belgium',           flagB:'🇧🇪',
     kickoffUTC:'2026-07-10T19:00:00Z', venue:'Los Angeles',       status:'upcoming' },
 
   { matchId:'m099', stage:'QF', matchDay:'Quarter-Final', group:null,
-    teamA:'TBD (W m091)', flagA:'🏳️', teamB:'TBD (W m092)',      flagB:'🏳️',
+    teamA:'Norway',       flagA:'🇳🇴', teamB:'England',           flagB:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',
     kickoffUTC:'2026-07-11T21:00:00Z', venue:'Miami',             status:'upcoming' },
 
   { matchId:'m100', stage:'QF', matchDay:'Quarter-Final', group:null,
-    teamA:'TBD (W m095)', flagA:'🏳️', teamB:'TBD (W m096)',      flagB:'🏳️',
+    teamA:'Argentina',    flagA:'🇦🇷', teamB:'Switzerland',       flagB:'🇨🇭',
     kickoffUTC:'2026-07-12T01:00:00Z', venue:'Kansas City',       status:'upcoming' },
 
   // ── SEMI-FINALS ───────────────────────────────────────
