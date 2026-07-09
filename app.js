@@ -50,8 +50,8 @@ const PTS_CHAMP       = 50;  // tournament winner bonus
 const PTS_TOPTEAM     = 30;  // top scoring team bonus
 const PTS_GOLDEN_BOOT = 20;  // golden boot (top scorer) bonus
 
-// Tournament picks lock — 5 min before first QF (Morocco vs France, Jul 9 20:00 UTC)
-const TOURNAMENT_PICKS_LOCK_UTC = '2026-07-09T19:55:00Z';
+// Tournament picks lock — 5 min before first SF (Jul 14 19:00 UTC)
+const TOURNAMENT_PICKS_LOCK_UTC = '2026-07-14T18:55:00Z';
 
 // ── App State ──────────────────────────────────────────
 const STATE = {
