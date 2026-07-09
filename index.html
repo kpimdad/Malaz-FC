@@ -403,9 +403,10 @@
     <div class="modal-header">
       <div class="modal-icon">🏆</div>
       <h2 class="modal-title">Tournament Picks</h2>
-      <p class="modal-sub">Make your bonus picks — once per tournament</p>
+      <p class="modal-sub">Bonus picks — locked before Quarter-Finals</p>
     </div>
     <div class="modal-body">
+      <div id="picks-deadline" style="text-align:center;font-size:0.8rem;font-weight:600;padding:0.4rem 0.75rem;border-radius:6px;margin-bottom:1rem;background:var(--card);"></div>
       <div class="form-group">
         <label class="form-label">🏆 Tournament Winner <span class="bonus-tag">+50 pts</span></label>
         <select class="form-select" id="champion-select">
@@ -416,6 +417,12 @@
         <label class="form-label">⚽ Top Scoring Team <span class="bonus-tag">+30 pts</span></label>
         <select class="form-select" id="top-scorer-select">
           <option value="">— Pick a team —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">👟 Golden Boot Winner <span class="bonus-tag">+20 pts</span></label>
+        <select class="form-select" id="golden-boot-select">
+          <option value="">— Pick a player —</option>
         </select>
       </div>
     </div>
@@ -538,9 +545,9 @@
   window.firebaseFirestore = _firestore;
 </script>
 
-<script src="firebase-config.js?v=5"></script>
-<script src="matches.js?v=5"></script>
-<script src="app.js?v=5"></script>
+<script src="firebase-config.js?v=6"></script>
+<script src="matches.js?v=6"></script>
+<script src="app.js?v=6"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));

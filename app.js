@@ -2,7 +2,7 @@
    MALAZ FC WC 2026 — app.js
    Knockout stage · Firebase Firestore · No build step
    Scoring: 15 pts exact · 10 pts correct result · 0 wrong · +5 correct pen winner (draws only)
-   Bonus:  +50 tournament winner · +30 top scoring team
+   Bonus:  +50 tournament winner · +30 top scoring team · +20 golden boot
    ═══════════════════════════════════════════════════════ */
 
 'use strict';
@@ -46,8 +46,12 @@ const REGISTRATION_OPEN = false;  // set true to re-open self-registration
 const PTS_EXACT   = 15;  // exact score
 const PTS_RESULT  = 10;  // correct result / winner only
 const PTS_PEN     =  5;  // correct penalty winner (draws only)
-const PTS_CHAMP   = 50;  // tournament winner bonus
-const PTS_TOPTEAM = 30;  // top scoring team bonus
+const PTS_CHAMP       = 50;  // tournament winner bonus
+const PTS_TOPTEAM     = 30;  // top scoring team bonus
+const PTS_GOLDEN_BOOT = 20;  // golden boot (top scorer) bonus
+
+// Tournament picks lock — 5 min before first QF (Morocco vs France, Jul 9 20:00 UTC)
+const TOURNAMENT_PICKS_LOCK_UTC = '2026-07-09T19:55:00Z';
 
 // ── App State ──────────────────────────────────────────
 const STATE = {
@@ -379,15 +383,17 @@ async function handleRegister() {
       isAdmin:        false,
       isAdminAccount: false,
       disabled:       false,
-      totalPoints:    0,
-      exactScores:    0,
-      correctResults: 0,
-      championPick:   '',
-      topScorerPick:  '',
-      champBonus:     0,
-      topScorerBonus: 0,
-      photoURL:       '',
-      createdAt:      serverTimestamp(),
+      totalPoints:     0,
+      exactScores:     0,
+      correctResults:  0,
+      championPick:    '',
+      topScorerPick:   '',
+      goldenBootPick:  '',
+      champBonus:      0,
+      topScorerBonus:  0,
+      goldenBootBonus: 0,
+      photoURL:        '',
+      createdAt:       serverTimestamp(),
     });
 
     // Account created — now log straight in
@@ -466,34 +472,103 @@ function getKnownTeams() {
   return [...new Set([...ALL_WC2026_TEAMS, ...fromMatches])].sort();
 }
 
+// QF-stage Golden Boot candidates (players from 8 remaining teams)
+const GOLDEN_BOOT_PLAYERS = [
+  'Alexander Sørloth (Norway)',
+  'Álvaro Morata (Spain)',
+  'Antoine Griezmann (France)',
+  'Breel Embolo (Switzerland)',
+  'Bukayo Saka (England)',
+  'Dani Olmo (Spain)',
+  'Dodi Lukebakio (Belgium)',
+  'Erling Haaland (Norway)',
+  'Ferran Torres (Spain)',
+  'Hakim Ziyech (Morocco)',
+  'Harry Kane (England)',
+  'Jude Bellingham (England)',
+  'Julián Álvarez (Argentina)',
+  'Kevin De Bruyne (Belgium)',
+  'Kylian Mbappé (France)',
+  'Lamine Yamal (Spain)',
+  'Lautaro Martínez (Argentina)',
+  'Lionel Messi (Argentina)',
+  'Marcus Thuram (France)',
+  'Martin Ødegaard (Norway)',
+  'Phil Foden (England)',
+  'Romelu Lukaku (Belgium)',
+  'Ruben Vargas (Switzerland)',
+  'Soufiane Boufal (Morocco)',
+  'Youssef En-Nesyri (Morocco)',
+];
+
 function populateTeamSelects() {
   const teams = getKnownTeams();
   const opts  = teams.map(t => `<option value="${t}">${t}</option>`).join('');
   const blank = '<option value="">— Pick a team —</option>';
   document.getElementById('champion-select').innerHTML    = blank + opts;
   document.getElementById('top-scorer-select').innerHTML  = blank + opts;
+  const blankP = '<option value="">— Pick a player —</option>';
+  document.getElementById('golden-boot-select').innerHTML = blankP +
+    GOLDEN_BOOT_PLAYERS.map(p => `<option value="${p}">${p}</option>`).join('');
+}
+
+function isTournamentPicksLocked() {
+  return Date.now() >= new Date(TOURNAMENT_PICKS_LOCK_UTC).getTime();
 }
 
 async function openChampionModal(userData = null) {
   populateTeamSelects();
+  const locked = isTournamentPicksLocked();
+
   if (userData?.championPick)   document.getElementById('champion-select').value    = userData.championPick;
   if (userData?.topScorerPick)  document.getElementById('top-scorer-select').value  = userData.topScorerPick;
-  const hasPicks = userData?.championPick && userData?.topScorerPick;
-  document.getElementById('skip-champion-btn').textContent = hasPicks ? 'Close' : 'Skip for now';
+  if (userData?.goldenBootPick) document.getElementById('golden-boot-select').value = userData.goldenBootPick;
+
+  // Deadline banner
+  const deadlineEl = document.getElementById('picks-deadline');
+  if (deadlineEl) {
+    if (locked) {
+      deadlineEl.textContent = '🔒 Picks are locked';
+      deadlineEl.style.color = 'var(--red)';
+      deadlineEl.style.background = 'rgba(231,76,60,0.12)';
+    } else {
+      const lockDate = new Date(TOURNAMENT_PICKS_LOCK_UTC);
+      const fmt = lockDate.toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
+      deadlineEl.textContent = `⏰ Deadline: ${fmt}`;
+      deadlineEl.style.color = 'var(--gold)';
+      deadlineEl.style.background = 'rgba(212,175,55,0.1)';
+    }
+  }
+
+  // Lock/unlock inputs
+  ['champion-select', 'top-scorer-select', 'golden-boot-select'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = locked;
+  });
+  const saveBtn = document.getElementById('save-champion-btn');
+  saveBtn.disabled = locked;
+  saveBtn.textContent = locked ? '🔒 Picks Locked' : 'Save My Picks';
+
+  const hasPicks = userData?.championPick && userData?.topScorerPick && userData?.goldenBootPick;
+  document.getElementById('skip-champion-btn').textContent = (hasPicks || locked) ? 'Close' : 'Skip for now';
   document.getElementById('champion-modal').style.display = 'flex';
 }
 
 async function saveChampionPick() {
-  const champion  = document.getElementById('champion-select').value;
-  const topScorer = document.getElementById('top-scorer-select').value;
-  if (!champion || !topScorer) { showToast('Pick both a champion and top scoring team', 'error'); return; }
-  if (!STATE.session?.userId)  { showToast('Not logged in', 'error'); return; }
+  if (isTournamentPicksLocked()) { showToast('Tournament picks are locked', 'lock'); return; }
+  const champion   = document.getElementById('champion-select').value;
+  const topScorer  = document.getElementById('top-scorer-select').value;
+  const goldenBoot = document.getElementById('golden-boot-select').value;
+  if (!champion || !topScorer || !goldenBoot) {
+    showToast('Complete all three picks', 'error'); return;
+  }
+  if (!STATE.session?.userId) { showToast('Not logged in', 'error'); return; }
   const btn = document.getElementById('save-champion-btn');
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
     await setDoc(doc(STATE.db, 'users', STATE.session.userId),
-      { championPick: champion, topScorerPick: topScorer }, { merge: true });
-    showToast(`🏆 ${champion} to win · ⚽ ${topScorer} top scorer!`, 'success');
+      { championPick: champion, topScorerPick: topScorer, goldenBootPick: goldenBoot }, { merge: true });
+    showToast(`🏆 ${champion} · ⚽ ${topScorer} · 👟 ${goldenBoot.split(' (')[0]}`, 'success');
     document.getElementById('champion-modal').style.display = 'none';
   } catch (e) {
     showToast(`Save failed: ${e?.code || e?.message || String(e)}`, 'error');
@@ -938,10 +1013,12 @@ function renderLeaderboardTable(users) {
       else               moveHTML = `<div class="lb-rank-move same">–</div>`;
     }
 
-    const champ = u.championPick   || '–';
-    const topSc = u.topScorerPick  || '–';
-    const champBonus = u.champBonus    || 0;
-    const topBonus   = u.topScorerBonus || 0;
+    const champ      = u.championPick    || '–';
+    const topSc      = u.topScorerPick   || '–';
+    const goldenBoot = u.goldenBootPick  || '–';
+    const champBonus      = u.champBonus       || 0;
+    const topBonus        = u.topScorerBonus   || 0;
+    const goldenBootBonus = u.goldenBootBonus  || 0;
 
     const mainRow = `<tr class="lb-tr ${isMe ? 'lb-me' : ''} ${rankCls}" data-uid="${u.id}" data-nickname="${u.nickname}">
       <td class="lb-td-rank"><div class="lb-rank-num">${rankNum}</div>${moveHTML}</td>
@@ -968,7 +1045,8 @@ function renderLeaderboardTable(users) {
         <div class="lb-drawer">
           <div class="lb-drawer-picks">
             <span class="lb-drawer-pick"><span class="lb-drawer-lbl">🏆 Winner pick</span>${champ}${champBonus ? ` <span class="bonus-awarded">+${champBonus}pts</span>` : ''}</span>
-            <span class="lb-drawer-pick"><span class="lb-drawer-lbl">⚽ Top Scorer Team</span>${topSc}${topBonus ? ` <span class="bonus-awarded">+${topBonus}pts</span>` : ''}</span>
+            <span class="lb-drawer-pick"><span class="lb-drawer-lbl">⚽ Top Scoring Team</span>${topSc}${topBonus ? ` <span class="bonus-awarded">+${topBonus}pts</span>` : ''}</span>
+            <span class="lb-drawer-pick"><span class="lb-drawer-lbl">👟 Golden Boot</span>${goldenBoot}${goldenBootBonus ? ` <span class="bonus-awarded">+${goldenBootBonus}pts</span>` : ''}</span>
           </div>
           ${compareBtn}
         </div>
@@ -997,7 +1075,7 @@ function renderLeaderboardTable(users) {
     </table>
     <div class="lb-legend">
       Exact score = <span>${PTS_EXACT}pts</span> · Correct result = <span>${PTS_RESULT}pts</span> ·
-      Tournament winner = <span>+${PTS_CHAMP}pts</span> · Top scoring team = <span>+${PTS_TOPTEAM}pts</span>
+      Tournament winner = <span>+${PTS_CHAMP}pts</span> · Top scoring team = <span>+${PTS_TOPTEAM}pts</span> · Golden Boot = <span>+${PTS_GOLDEN_BOOT}pts</span>
     </div>`;
 
   document.getElementById('leaderboard-updated').textContent =
@@ -1245,8 +1323,8 @@ async function addAdminUser() {
     await setDoc(doc(collection(STATE.db, 'users')), {
       nickname, pinHash: '', mobile: '',
       isAdmin: false, totalPoints: 0, exactScores: 0, correctResults: 0,
-      championPick: '', topScorerPick: '',
-      champBonus: 0, topScorerBonus: 0,
+      championPick: '', topScorerPick: '', goldenBootPick: '',
+      champBonus: 0, topScorerBonus: 0, goldenBootBonus: 0,
       photoURL: '', createdAt: serverTimestamp()
     });
     showToast(`${nickname} added! They'll set their PIN on first login.`, 'success');
@@ -1417,19 +1495,37 @@ function renderBonusSection() {
       </div>
     </div>`;
 
+    <div class="admin-card">
+      <div class="admin-card-head">👟 Award Golden Boot Bonus (+${PTS_GOLDEN_BOOT} pts)</div>
+      <div class="admin-card-body">
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Enter the actual Golden Boot winner's name to award ${PTS_GOLDEN_BOOT} pts to players who picked correctly.</p>
+        <div class="admin-form">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Golden Boot Winner</label>
+            <select id="bonus-goldenboot-select" class="form-select">
+              <option value="">— Select player —</option>
+              ${GOLDEN_BOOT_PLAYERS.map(p => `<option value="${p}">${p}</option>`).join('')}
+            </select>
+          </div>
+          <button id="award-goldenboot-btn" class="btn btn-primary" style="width:auto">Award Golden Boot Bonus</button>
+        </div>
+      </div>
+    </div>`;
+
   document.getElementById('award-champ-btn').addEventListener('click', () => awardBonus('champion'));
   document.getElementById('award-topscorer-btn').addEventListener('click', () => awardBonus('topscorer'));
+  document.getElementById('award-goldenboot-btn').addEventListener('click', () => awardBonus('goldenboot'));
 }
 
 async function awardBonus(type) {
-  const isChamp = type === 'champion';
-  const selectId = isChamp ? 'bonus-champ-select' : 'bonus-topscorer-select';
-  const winner   = document.getElementById(selectId).value;
-  if (!winner) { showToast('Select a team first', 'error'); return; }
-  const pts      = isChamp ? PTS_CHAMP : PTS_TOPTEAM;
-  const pickField = isChamp ? 'championPick' : 'topScorerPick';
-  const bonusField = isChamp ? 'champBonus' : 'topScorerBonus';
-  const label = isChamp ? 'Tournament Winner' : 'Top Scoring Team';
+  const cfg = {
+    champion:   { selectId: 'bonus-champ-select',      pts: PTS_CHAMP,       pickField: 'championPick',   bonusField: 'champBonus',      label: 'Tournament Winner' },
+    topscorer:  { selectId: 'bonus-topscorer-select',  pts: PTS_TOPTEAM,     pickField: 'topScorerPick',  bonusField: 'topScorerBonus',  label: 'Top Scoring Team' },
+    goldenboot: { selectId: 'bonus-goldenboot-select', pts: PTS_GOLDEN_BOOT, pickField: 'goldenBootPick', bonusField: 'goldenBootBonus', label: 'Golden Boot' },
+  }[type];
+  const winner     = document.getElementById(cfg.selectId).value;
+  if (!winner) { showToast('Select a winner first', 'error'); return; }
+  const { pts, pickField, bonusField, label } = cfg;
 
   if (!confirm(`Award +${pts} pts to all players who picked "${winner}" as ${label}?`)) return;
 
@@ -1482,7 +1578,7 @@ async function recalcAll() {
     uSnap.forEach(d => {
       const uid = d.id;
       if (!validUids.has(uid)) return;
-      totals[uid] = (totals[uid] || 0) + (d.data().champBonus || 0) + (d.data().topScorerBonus || 0);
+      totals[uid] = (totals[uid] || 0) + (d.data().champBonus || 0) + (d.data().topScorerBonus || 0) + (d.data().goldenBootBonus || 0);
     });
     const batch = writeBatch(STATE.db);
     Object.entries(totals).forEach(([uid, pts]) => batch.update(doc(STATE.db, 'users', uid), { totalPoints: pts }));
@@ -1694,12 +1790,13 @@ async function initApp() {
   buildRoundNav();
   startCountdownTimers();
 
-  // Prompt champion picks if not set
+  // Prompt tournament picks if not fully set and still open
   try {
     const uSnap = await getDoc(doc(STATE.db, 'users', session.userId));
     if (uSnap.exists()) {
       const userData = uSnap.data();
-      if (!userData.championPick || !userData.topScorerPick) {
+      const allSet = userData.championPick && userData.topScorerPick && userData.goldenBootPick;
+      if (!allSet && !isTournamentPicksLocked()) {
         setTimeout(() => openChampionModal(userData), 1000);
       }
     }
