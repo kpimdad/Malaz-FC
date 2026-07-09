@@ -1493,8 +1493,7 @@ function renderBonusSection() {
           <button id="award-topscorer-btn" class="btn btn-primary" style="width:auto">Award Top Scorer Bonus</button>
         </div>
       </div>
-    </div>`;
-
+    </div>
     <div class="admin-card">
       <div class="admin-card-head">👟 Award Golden Boot Bonus (+${PTS_GOLDEN_BOOT} pts)</div>
       <div class="admin-card-body">
