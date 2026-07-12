@@ -255,13 +255,7 @@ async function fetchUsers() {
   snap.forEach(d => {
     if (!d.data().disabled && !d.data().isAdminAccount) STATE.users.push({ id: d.id, ...d.data() });
   });
-  STATE.users.sort((a, b) => {
-    const pts = (b.totalPoints || 0) - (a.totalPoints || 0);
-    if (pts !== 0) return pts;
-    const exact = (b.computedExact || 0) - (a.computedExact || 0);
-    if (exact !== 0) return exact;
-    return (b.computedWinner || 0) - (a.computedWinner || 0);
-  });
+  STATE.users.sort((a, b) => (b.totalPoints || 0) - (a.totalPoints || 0));
 }
 
 // ═══════════════════════════════════════════════════════
@@ -914,6 +908,13 @@ async function computeUserAccuracy() {
     u.computedPen          = penMap[u.id]     || 0;
     u.exactAccuracy        = total >= 1 ? Math.round(((exactMap[u.id]  || 0) / total) * 100) : null;
     u.resultAccuracy       = total >= 1 ? Math.round(((winnerMap[u.id] || 0) / total) * 100) : null;
+  });
+  STATE.users.sort((a, b) => {
+    const pts = (b.totalPoints || 0) - (a.totalPoints || 0);
+    if (pts !== 0) return pts;
+    const exact = (b.computedExact || 0) - (a.computedExact || 0);
+    if (exact !== 0) return exact;
+    return (b.computedWinner || 0) - (a.computedWinner || 0);
   });
 }
 
