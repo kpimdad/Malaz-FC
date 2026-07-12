@@ -124,11 +124,11 @@ const MATCHES = [
 
   // ── SEMI-FINALS ───────────────────────────────────────
   { matchId:'m101', stage:'SF', matchDay:'Semi-Final', group:null,
-    teamA:'TBD (W m097)', flagA:'🏳️', teamB:'TBD (W m098)',      flagB:'🏳️',
+    teamA:'France',       flagA:'🇫🇷', teamB:'Spain',             flagB:'🇪🇸',
     kickoffUTC:'2026-07-14T19:00:00Z', venue:'Dallas',            status:'upcoming' },
 
   { matchId:'m102', stage:'SF', matchDay:'Semi-Final', group:null,
-    teamA:'TBD (W m099)', flagA:'🏳️', teamB:'TBD (W m100)',      flagB:'🏳️',
+    teamA:'England',      flagA:'🏴󠁧󠁢󠁥󠁮󠁧󠁿', teamB:'Argentina',        flagB:'🇦🇷',
     kickoffUTC:'2026-07-15T19:00:00Z', venue:'Atlanta',           status:'upcoming' },
 
   // ── THIRD PLACE ───────────────────────────────────────
