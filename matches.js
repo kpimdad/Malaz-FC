@@ -133,12 +133,12 @@ const MATCHES = [
 
   // ── THIRD PLACE ───────────────────────────────────────
   { matchId:'m103', stage:'Third', matchDay:'Third Place', group:null,
-    teamA:'TBD (L m101)', flagA:'🏳️', teamB:'TBD (L m102)',      flagB:'🏳️',
+    teamA:'France',       flagA:'🇫🇷', teamB:'England',           flagB:'🏴󠁧󠁢󠁥󠁮󠁧󠁿',
     kickoffUTC:'2026-07-18T21:00:00Z', venue:'Miami',             status:'upcoming' },
 
   // ── FINAL ─────────────────────────────────────────────
   { matchId:'m104', stage:'Final', matchDay:'Final', group:null,
-    teamA:'TBD (W m101)', flagA:'🏳️', teamB:'TBD (W m102)',      flagB:'🏳️',
+    teamA:'Spain',        flagA:'🇪🇸', teamB:'Argentina',         flagB:'🇦🇷',
     kickoffUTC:'2026-07-19T19:00:00Z', venue:'New York / New Jersey', status:'upcoming' },
 
 ];
