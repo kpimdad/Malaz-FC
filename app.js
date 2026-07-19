@@ -869,6 +869,37 @@ async function openPredictView(matchId) {
   document.getElementById('predict-locked-msg').style.display = locked ? 'block' : 'none';
   document.getElementById('predict-save-btn').disabled = locked;
   document.querySelectorAll('.stepper-btn').forEach(b => b.disabled = locked);
+
+  // Update scoring labels for Final / Third place
+  const isFinalStage = m.stage === 'Final' || m.stage === 'Third';
+  const E = isFinalStage ? PTS_EXACT_FINAL  : PTS_EXACT;
+  const R = isFinalStage ? PTS_RESULT_FINAL : PTS_RESULT;
+  const P = isFinalStage ? PTS_PEN_FINAL    : PTS_PEN;
+  const exactLbl  = document.getElementById('pts-exact-label');
+  const resultLbl = document.getElementById('pts-result-label');
+  const penLbl    = document.getElementById('pts-pen-label');
+  if (exactLbl)  exactLbl.textContent  = `⚽ ${E} pts — exact score`;
+  if (resultLbl) resultLbl.textContent = `✓ ${R} pts — correct result`;
+  if (penLbl)    penLbl.textContent    = `🥅 +${P} pts — pen winner`;
+
+  // HT Result inline section — Final only
+  const htSection = document.getElementById('predict-ht-section');
+  if (htSection) {
+    const isFinal   = m.stage === 'Final';
+    const htLocked  = isHtResultLocked();
+    htSection.style.display = isFinal ? 'block' : 'none';
+    if (isFinal) {
+      const userData = STATE.users.find(u => u.id === STATE.session?.userId);
+      const currentHt = userData?.htResultPick || null;
+      document.querySelectorAll('.predict-ht-btn').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.val === currentHt);
+        btn.disabled = htLocked;
+      });
+      htSection.querySelector('.predict-ht-header span:first-child').textContent =
+        htLocked ? '🔒 HT PICK LOCKED' : '⏱️ HALF-TIME RESULT?';
+    }
+  }
+
   showView('view-predict');
 }
 
@@ -1093,6 +1124,8 @@ function renderLeaderboardTable(users) {
     const topBonus        = u.topScorerBonus   || 0;
     const goldenBootBonus = u.goldenBootBonus  || 0;
     const htResultBonus   = u.htResultBonus    || 0;
+    const totalBonus      = champBonus + topBonus + goldenBootBonus + htResultBonus;
+    const penBadge        = pen > 0 ? `<div class="lb-pen-badge">⚽${pen > 1 ? `x${pen}` : ''}</div>` : '';
 
     const mainRow = `<tr class="lb-tr ${isMe ? 'lb-me' : ''} ${rankCls}" data-uid="${u.id}" data-nickname="${u.nickname}">
       <td class="lb-td-rank"><div class="lb-rank-num">${rankNum}</div>${moveHTML}</td>
@@ -1107,8 +1140,8 @@ function renderLeaderboardTable(users) {
       <td class="lb-td-num lb-td-played">${played}</td>
       <td class="lb-td-num lb-td-exact">${exact}</td>
       <td class="lb-td-num lb-td-result">${winner}</td>
-      <td class="lb-td-num lb-td-pen">${pen > 0 ? `<span style="color:var(--gold)">${pen}</span>` : '–'}</td>
-      <td class="lb-td-pts"><span class="lb-pts">${pts}</span></td>
+      <td class="lb-td-num lb-td-bonus">${totalBonus > 0 ? `<span class="lb-bonus-pts">+${totalBonus}</span>` : '–'}</td>
+      <td class="lb-td-pts"><span class="lb-pts">${pts}</span>${penBadge}</td>
     </tr>`;
 
     const compareBtn = !isMe
@@ -1142,7 +1175,7 @@ function renderLeaderboardTable(users) {
           <th class="lb-th-num">Played</th>
           <th class="lb-th-num">Exact</th>
           <th class="lb-th-num">Result</th>
-          <th class="lb-th-num">🥅</th>
+          <th class="lb-th-num">Bonus</th>
           <th class="lb-th-pts">Pts</th>
         </tr>
       </thead>
@@ -2028,6 +2061,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       const labels = { Spain: '🇪🇸 Spain leading', Draw: '🤝 Level', Argentina: '🇦🇷 Argentina leading' };
       const sel = document.getElementById('ht-pick-selected');
       if (sel) sel.textContent = `Your pick: ${labels[btn.dataset.val]}`;
+    });
+  });
+
+  // HT result inline pick on prediction card (Final only — auto-saves on tap)
+  document.querySelectorAll('.predict-ht-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.disabled || isHtResultLocked()) return;
+      if (!STATE.session?.userId) return;
+      const pick = btn.dataset.val;
+      document.querySelectorAll('.predict-ht-btn').forEach(b => b.classList.toggle('selected', b === btn));
+      const labels = { Spain: '🇪🇸 Spain leading', Draw: '🤝 Level', Argentina: '🇦🇷 Argentina leading' };
+      try {
+        await setDoc(doc(STATE.db, 'users', STATE.session.userId), { htResultPick: pick }, { merge: true });
+        // Update local cache
+        const u = STATE.users.find(x => x.id === STATE.session.userId);
+        if (u) u.htResultPick = pick;
+        showToast(`⏱️ HT pick: ${labels[pick]}`, 'success');
+      } catch (e) { showToast('Save failed', 'error'); }
     });
   });
   document.getElementById('my-picks-btn').addEventListener('click', async () => {

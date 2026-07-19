@@ -534,6 +534,8 @@ select.form-input-lg {
 .lb-name-text { font-weight: 600; font-size: 0.88rem; }
 .me-tag { background: var(--grass); color: #fff; font-size: 0.58rem; font-weight: 800; border-radius: 4px; padding: 0.1rem 0.3rem; margin-left: 0.3rem; vertical-align: middle; }
 .lb-pts { font-size: 1.1rem; font-weight: 800; color: var(--gold); }
+.lb-pen-badge { font-size: 0.6rem; color: var(--muted); margin-top: 1px; text-align: center; }
+.lb-bonus-pts { font-weight: 700; color: var(--grass-lt); font-size: 0.85rem; }
 .lb-inline-compare { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 0.15rem 0.35rem; font-size: 0.7rem; cursor: pointer; }
 .lb-inline-compare:hover { color: var(--text); }
 
@@ -570,7 +572,7 @@ select.form-input-lg {
 .compare-pen.wrong   { color: var(--muted); text-decoration: line-through; }
 .compare-pen.neutral { color: var(--muted); }
 
-/* ── HT Result pick buttons ──────────────────────────── */
+/* ── HT Result pick buttons (modal) ─────────────────── */
 .ht-pick-group { display: flex; flex-direction: column; gap: 0.75rem; }
 .ht-pick-btn {
   padding: 0.9rem 1.25rem; border-radius: 10px;
@@ -582,6 +584,26 @@ select.form-input-lg {
 .ht-pick-btn:hover:not(:disabled) { border-color: var(--gold); background: rgba(212,175,55,0.08); }
 .ht-pick-btn.selected { border-color: var(--gold); background: rgba(212,175,55,0.15); color: var(--gold); }
 .ht-pick-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── HT Result inline on predict card ───────────────── */
+.predict-ht-header {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  font-size: 0.75rem; font-weight: 800; letter-spacing: 0.08em;
+  color: var(--muted); margin-bottom: 0.75rem;
+}
+.predict-ht-btns {
+  display: flex; gap: 0.5rem;
+}
+.predict-ht-btn {
+  flex: 1; padding: 0.65rem 0.5rem; border-radius: 10px;
+  border: 2px solid var(--border); background: var(--card);
+  color: var(--text); font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+}
+.predict-ht-btn:hover:not(:disabled) { border-color: var(--gold); background: rgba(212,175,55,0.08); }
+.predict-ht-btn.selected { border-color: var(--gold); background: rgba(212,175,55,0.18); color: var(--gold); }
+.predict-ht-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ═══════════════════════════════════════════════════════
    MY PREDICTIONS

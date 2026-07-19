@@ -198,10 +198,23 @@
       </div>
     </div>
 
+    <!-- HT Result inline pick — shown only for the Final -->
+    <div id="predict-ht-section" style="display:none;margin-top:1.25rem">
+      <div class="predict-ht-header">
+        <span>⏱️ HALF-TIME RESULT?</span>
+        <span class="bonus-tag">+20 PTS</span>
+      </div>
+      <div class="predict-ht-btns">
+        <button class="predict-ht-btn" data-val="Spain">🇪🇸 Spain</button>
+        <button class="predict-ht-btn" data-val="Draw">Draw</button>
+        <button class="predict-ht-btn" data-val="Argentina">🇦🇷 Argentina</button>
+      </div>
+    </div>
+
     <div class="predict-hint">
-      <span class="pts-example exact">⚽ 15 pts — exact score</span>
-      <span class="pts-example winner">✓ 10 pts — correct result</span>
-      <span class="pts-example pen">🥅 +5 pts — pen winner</span>
+      <span class="pts-example exact" id="pts-exact-label">⚽ 15 pts — exact score</span>
+      <span class="pts-example winner" id="pts-result-label">✓ 10 pts — correct result</span>
+      <span class="pts-example pen" id="pts-pen-label">🥅 +5 pts — pen winner</span>
     </div>
 
     <button class="btn btn-primary predict-save" id="predict-save-btn">Save Prediction 💾</button>
