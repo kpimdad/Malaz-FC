@@ -570,6 +570,19 @@ select.form-input-lg {
 .compare-pen.wrong   { color: var(--muted); text-decoration: line-through; }
 .compare-pen.neutral { color: var(--muted); }
 
+/* ── HT Result pick buttons ──────────────────────────── */
+.ht-pick-group { display: flex; flex-direction: column; gap: 0.75rem; }
+.ht-pick-btn {
+  padding: 0.9rem 1.25rem; border-radius: 10px;
+  border: 2px solid var(--border); background: var(--card);
+  color: var(--text); font-size: 1rem; font-weight: 600;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+}
+.ht-pick-btn:hover:not(:disabled) { border-color: var(--gold); background: rgba(212,175,55,0.08); }
+.ht-pick-btn.selected { border-color: var(--gold); background: rgba(212,175,55,0.15); color: var(--gold); }
+.ht-pick-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ═══════════════════════════════════════════════════════
    MY PREDICTIONS
 ════════════════════════════════════════════════════════ */

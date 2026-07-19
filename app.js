@@ -46,6 +46,13 @@ const REGISTRATION_OPEN = false;  // set true to re-open self-registration
 const PTS_EXACT   = 15;  // exact score
 const PTS_RESULT  = 10;  // correct result / winner only
 const PTS_PEN     =  5;  // correct penalty winner (draws only)
+// Final & 3rd place bonus scoring
+const PTS_EXACT_FINAL  = 25;  // exact score  — Final / Third
+const PTS_RESULT_FINAL = 15;  // correct result — Final / Third
+const PTS_PEN_FINAL    = 10;  // pen winner — Final / Third
+// Half-time result pick (Final only)
+const PTS_HT_RESULT      = 20;
+const HT_RESULT_LOCK_UTC = '2026-07-19T19:00:00Z';  // Final kick-off
 const PTS_CHAMP       = 50;  // tournament winner bonus
 const PTS_TOPTEAM     = 30;  // top scoring team bonus
 const PTS_GOLDEN_BOOT = 20;  // golden boot (top scorer) bonus
@@ -213,11 +220,14 @@ function getAvatarHTML(user, size = 36) {
 
 // ── Scoring ────────────────────────────────────────────
 // pPen / rPen = 'A' | 'B' | null  (penalty winner — only relevant when both scores equal)
-function calculatePoints(pA, pB, rA, rB, pPen, rPen) {
-  if (Math.sign(pA - pB) !== Math.sign(rA - rB)) return 0;          // wrong result
-  let pts = (pA === rA && pB === rB) ? PTS_EXACT : PTS_RESULT;      // exact or correct
-  if (rA === rB && pA === pB && rPen && pPen && pPen === rPen)       // pen winner bonus
-    pts += PTS_PEN;
+function calculatePoints(pA, pB, rA, rB, pPen, rPen, stage = null) {
+  const isFinal = stage === 'Final' || stage === 'Third';
+  const E = isFinal ? PTS_EXACT_FINAL  : PTS_EXACT;
+  const R = isFinal ? PTS_RESULT_FINAL : PTS_RESULT;
+  const P = isFinal ? PTS_PEN_FINAL    : PTS_PEN;
+  if (Math.sign(pA - pB) !== Math.sign(rA - rB)) return 0;
+  let pts = (pA === rA && pB === rB) ? E : R;
+  if (rA === rB && pA === pB && rPen && pPen && pPen === rPen) pts += P;
   return pts;
 }
 
@@ -514,6 +524,60 @@ function populateTeamSelects() {
 
 function isTournamentPicksLocked() {
   return Date.now() >= new Date(TOURNAMENT_PICKS_LOCK_UTC).getTime();
+}
+function isHtResultLocked() {
+  return Date.now() >= new Date(HT_RESULT_LOCK_UTC).getTime();
+}
+
+async function openHtResultModal(userData = null) {
+  const locked  = isHtResultLocked();
+  const current = userData?.htResultPick || null;
+  STATE._htResultPick = current;
+
+  const deadlineEl = document.getElementById('ht-result-deadline');
+  if (deadlineEl) {
+    if (locked) {
+      deadlineEl.textContent = '🔒 Pick is locked — Final has kicked off';
+      deadlineEl.style.color = 'var(--red)';
+      deadlineEl.style.background = 'rgba(231,76,60,0.12)';
+    } else {
+      const lockDate = new Date(HT_RESULT_LOCK_UTC);
+      const fmt = lockDate.toLocaleString('en-GB', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit', timeZoneName:'short' });
+      deadlineEl.textContent = `⏰ Locks at kick-off: ${fmt}`;
+      deadlineEl.style.color = 'var(--gold)';
+      deadlineEl.style.background = 'rgba(212,175,55,0.1)';
+    }
+  }
+  document.querySelectorAll('.ht-pick-btn').forEach(btn => {
+    btn.classList.toggle('selected', btn.dataset.val === current);
+    btn.disabled = locked;
+  });
+  const labels = { Spain: '🇪🇸 Spain leading', Draw: '🤝 Level', Argentina: '🇦🇷 Argentina leading' };
+  const selectedEl = document.getElementById('ht-pick-selected');
+  if (selectedEl) selectedEl.textContent = current ? `Your pick: ${labels[current] || current}` : '';
+  const saveBtn = document.getElementById('save-ht-result-btn');
+  saveBtn.disabled = locked;
+  saveBtn.textContent = locked ? '🔒 Locked' : 'Save Pick';
+  document.getElementById('skip-ht-result-btn').textContent = (current || locked) ? 'Close' : 'Skip for now';
+  document.getElementById('ht-result-modal').style.display = 'flex';
+}
+
+async function saveHtResultPick() {
+  if (isHtResultLocked()) { showToast('Pick is locked — Final has kicked off', 'lock'); return; }
+  const pick = STATE._htResultPick;
+  if (!pick) { showToast('Select an option first', 'error'); return; }
+  if (!STATE.session?.userId) { showToast('Not logged in', 'error'); return; }
+  const btn = document.getElementById('save-ht-result-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await setDoc(doc(STATE.db, 'users', STATE.session.userId), { htResultPick: pick }, { merge: true });
+    const labels = { Spain: '🇪🇸 Spain leading', Draw: '🤝 Level', Argentina: '🇦🇷 Argentina leading' };
+    showToast(`⏱️ HT pick saved: ${labels[pick] || pick}`, 'success');
+    document.getElementById('ht-result-modal').style.display = 'none';
+  } catch (e) {
+    showToast(`Save failed: ${e?.code || e?.message || String(e)}`, 'error');
+  }
+  btn.disabled = false; btn.textContent = 'Save Pick';
 }
 
 async function openChampionModal(userData = null) {
@@ -963,7 +1027,7 @@ async function openCompareModal(userId, nickname) {
     const mine   = STATE.predictions[m.matchId];
     const theirs = theirPreds[m.matchId];
     const myPts  = mine?.pointsAwarded ?? null;
-    const thPts  = theirs ? calculatePoints(theirs.predictedA, theirs.predictedB, m.resultA, m.resultB, theirs.penWinner, m.penWinner) : null;
+    const thPts  = theirs ? calculatePoints(theirs.predictedA, theirs.predictedB, m.resultA, m.resultB, theirs.penWinner, m.penWinner, m.stage) : null;
     return `<div class="compare-row">
       <div class="compare-match-label">${getFlag(m.teamA, m.flagA)} ${m.teamA} <strong>${m.resultA}–${m.resultB}</strong>${m.penWinner ? ` (pen: ${m.penWinner === 'A' ? m.teamA : m.teamB})` : ''} ${m.teamB} ${getFlag(m.teamB, m.flagB)}</div>
       <div class="compare-picks">
@@ -1023,9 +1087,12 @@ function renderLeaderboardTable(users) {
     const champ      = u.championPick    || '–';
     const topSc      = u.topScorerPick   || '–';
     const goldenBoot = u.goldenBootPick  || '–';
+    const htLabels   = { Spain: '🇪🇸 Spain leading', Draw: '🤝 Level', Argentina: '🇦🇷 Argentina leading' };
+    const htResult   = u.htResultPick ? (htLabels[u.htResultPick] || u.htResultPick) : '–';
     const champBonus      = u.champBonus       || 0;
     const topBonus        = u.topScorerBonus   || 0;
     const goldenBootBonus = u.goldenBootBonus  || 0;
+    const htResultBonus   = u.htResultBonus    || 0;
 
     const mainRow = `<tr class="lb-tr ${isMe ? 'lb-me' : ''} ${rankCls}" data-uid="${u.id}" data-nickname="${u.nickname}">
       <td class="lb-td-rank"><div class="lb-rank-num">${rankNum}</div>${moveHTML}</td>
@@ -1054,6 +1121,7 @@ function renderLeaderboardTable(users) {
             <span class="lb-drawer-pick"><span class="lb-drawer-lbl">🏆 Winner pick</span>${champ}${champBonus ? ` <span class="bonus-awarded">+${champBonus}pts</span>` : ''}</span>
             <span class="lb-drawer-pick"><span class="lb-drawer-lbl">⚽ Top Scoring Team</span>${topSc}${topBonus ? ` <span class="bonus-awarded">+${topBonus}pts</span>` : ''}</span>
             <span class="lb-drawer-pick"><span class="lb-drawer-lbl">👟 Golden Boot</span>${goldenBoot}${goldenBootBonus ? ` <span class="bonus-awarded">+${goldenBootBonus}pts</span>` : ''}</span>
+            <span class="lb-drawer-pick"><span class="lb-drawer-lbl">⏱️ Final HT Result</span>${htResult}${htResultBonus ? ` <span class="bonus-awarded">+${htResultBonus}pts</span>` : ''}</span>
           </div>
           ${compareBtn}
         </div>
@@ -1416,7 +1484,7 @@ async function saveMatchResult(matchId, autoRA, autoRB) {
     const deltas = {};
     pSnap.forEach(d => {
       const p = d.data();
-      const pts = calculatePoints(p.predictedA, p.predictedB, rA, rB, p.penWinner, penWinner);
+      const pts = calculatePoints(p.predictedA, p.predictedB, rA, rB, p.penWinner, penWinner, STATE.matches.find(x => x.matchId === matchId)?.stage);
       batch.update(d.ref, { pointsAwarded: pts });
       total++; if (pts === PTS_EXACT) exact++; if (pts === PTS_RESULT || pts === PTS_RESULT + PTS_PEN) correct++;
       deltas[p.userId] = (deltas[p.userId] || 0) + (pts - (p.pointsAwarded ?? 0));
@@ -1516,11 +1584,30 @@ function renderBonusSection() {
           <button id="award-goldenboot-btn" class="btn btn-primary" style="width:auto">Award Golden Boot Bonus</button>
         </div>
       </div>
+    </div>
+    <div class="admin-card">
+      <div class="admin-card-head">⏱️ Award Final HT Result Bonus (+${PTS_HT_RESULT} pts)</div>
+      <div class="admin-card-body">
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Select the actual half-time result of the Final to award ${PTS_HT_RESULT} pts to correct picks.</p>
+        <div class="admin-form">
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label">Half-Time Result</label>
+            <select id="bonus-htresult-select" class="form-select">
+              <option value="">— Select result —</option>
+              <option value="Spain">🇪🇸 Spain leading</option>
+              <option value="Draw">🤝 Level</option>
+              <option value="Argentina">🇦🇷 Argentina leading</option>
+            </select>
+          </div>
+          <button id="award-htresult-btn" class="btn btn-primary" style="width:auto">Award HT Result Bonus</button>
+        </div>
+      </div>
     </div>`;
 
   document.getElementById('award-champ-btn').addEventListener('click', () => awardBonus('champion'));
   document.getElementById('award-topscorer-btn').addEventListener('click', () => awardBonus('topscorer'));
   document.getElementById('award-goldenboot-btn').addEventListener('click', () => awardBonus('goldenboot'));
+  document.getElementById('award-htresult-btn').addEventListener('click', () => awardBonus('htresult'));
 }
 
 async function awardBonus(type) {
@@ -1528,6 +1615,7 @@ async function awardBonus(type) {
     champion:   { selectId: 'bonus-champ-select',      pts: PTS_CHAMP,       pickField: 'championPick',   bonusField: 'champBonus',      label: 'Tournament Winner' },
     topscorer:  { selectId: 'bonus-topscorer-select',  pts: PTS_TOPTEAM,     pickField: 'topScorerPick',  bonusField: 'topScorerBonus',  label: 'Top Scoring Team' },
     goldenboot: { selectId: 'bonus-goldenboot-select', pts: PTS_GOLDEN_BOOT, pickField: 'goldenBootPick', bonusField: 'goldenBootBonus', label: 'Golden Boot' },
+    htresult:   { selectId: 'bonus-htresult-select',   pts: PTS_HT_RESULT,   pickField: 'htResultPick',   bonusField: 'htResultBonus',   label: 'Final HT Result' },
   }[type];
   const winner     = document.getElementById(cfg.selectId).value;
   if (!winner) { showToast('Select a winner first', 'error'); return; }
@@ -1584,7 +1672,7 @@ async function recalcAll() {
     uSnap.forEach(d => {
       const uid = d.id;
       if (!validUids.has(uid)) return;
-      totals[uid] = (totals[uid] || 0) + (d.data().champBonus || 0) + (d.data().topScorerBonus || 0) + (d.data().goldenBootBonus || 0);
+      totals[uid] = (totals[uid] || 0) + (d.data().champBonus || 0) + (d.data().topScorerBonus || 0) + (d.data().goldenBootBonus || 0) + (d.data().htResultBonus || 0);
     });
     const batch = writeBatch(STATE.db);
     Object.entries(totals).forEach(([uid, pts]) => batch.update(doc(STATE.db, 'users', uid), { totalPoints: pts }));
@@ -1605,7 +1693,7 @@ async function rescoreAllMatches() {
       const batch = writeBatch(STATE.db);
       pSnap.forEach(d => {
         const p = d.data();
-        batch.update(d.ref, { pointsAwarded: calculatePoints(p.predictedA, p.predictedB, m.resultA, m.resultB, p.penWinner, m.penWinner) });
+        batch.update(d.ref, { pointsAwarded: calculatePoints(p.predictedA, p.predictedB, m.resultA, m.resultB, p.penWinner, m.penWinner, m.stage) });
         predCount++;
       });
       await batch.commit();
@@ -1707,7 +1795,7 @@ async function saveAllBackdatePredictions() {
       if (!m) continue;
       const predId = `${userId}_${matchId}`;
       const pA = scores.a, pB = scores.b;
-      const pts = m.resultA != null ? calculatePoints(pA, pB, m.resultA, m.resultB, null, m.penWinner) : null;
+      const pts = m.resultA != null ? calculatePoints(pA, pB, m.resultA, m.resultB, null, m.penWinner, m.stage) : null;
       const existingSnap = await getDoc(doc(STATE.db, 'predictions', predId));
       const oldPts = existingSnap.exists() ? (existingSnap.data().pointsAwarded ?? 0) : 0;
       await setDoc(doc(STATE.db, 'predictions', predId), {
@@ -1804,6 +1892,9 @@ async function initApp() {
       const allSet = userData.championPick && userData.topScorerPick && userData.goldenBootPick;
       if (!allSet && !isTournamentPicksLocked()) {
         setTimeout(() => openChampionModal(userData), 1000);
+      }
+      if (!userData.htResultPick && !isHtResultLocked()) {
+        setTimeout(() => openHtResultModal(userData), 1500);
       }
     }
   } catch (e) { console.warn('Could not fetch user doc for champion prompt', e); }
@@ -1924,6 +2015,21 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('save-champion-btn').addEventListener('click', saveChampionPick);
   document.getElementById('skip-champion-btn').addEventListener('click', () => { document.getElementById('champion-modal').style.display = 'none'; });
   document.getElementById('close-champion-btn').addEventListener('click', () => { document.getElementById('champion-modal').style.display = 'none'; });
+
+  // HT result modal
+  document.getElementById('save-ht-result-btn').addEventListener('click', saveHtResultPick);
+  document.getElementById('skip-ht-result-btn').addEventListener('click', () => { document.getElementById('ht-result-modal').style.display = 'none'; });
+  document.getElementById('close-ht-result-btn').addEventListener('click', () => { document.getElementById('ht-result-modal').style.display = 'none'; });
+  document.querySelectorAll('.ht-pick-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      STATE._htResultPick = btn.dataset.val;
+      document.querySelectorAll('.ht-pick-btn').forEach(b => b.classList.toggle('selected', b === btn));
+      const labels = { Spain: '🇪🇸 Spain leading', Draw: '🤝 Level', Argentina: '🇦🇷 Argentina leading' };
+      const sel = document.getElementById('ht-pick-selected');
+      if (sel) sel.textContent = `Your pick: ${labels[btn.dataset.val]}`;
+    });
+  });
   document.getElementById('my-picks-btn').addEventListener('click', async () => {
     const uSnap = await getDoc(doc(STATE.db, 'users', STATE.session.userId));
     openChampionModal(uSnap.exists() ? uSnap.data() : null);

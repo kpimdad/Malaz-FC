@@ -433,6 +433,31 @@
   </div>
 </div>
 
+<!-- HT Result modal -->
+<div class="modal-overlay" id="ht-result-modal" style="display:none" role="dialog" aria-modal="true">
+  <div class="modal-card" style="max-width:380px">
+    <button class="modal-close" id="close-ht-result-btn">×</button>
+    <div class="modal-header">
+      <div class="modal-icon">⏱️</div>
+      <h2 class="modal-title">Final Half-Time Pick</h2>
+      <p class="modal-sub">🇪🇸 Spain vs Argentina 🇦🇷 — who's leading at HT? <span class="bonus-tag">+20 pts</span></p>
+    </div>
+    <div class="modal-body">
+      <div id="ht-result-deadline" style="text-align:center;font-size:0.8rem;font-weight:600;padding:0.4rem 0.75rem;border-radius:6px;margin-bottom:1.25rem;background:var(--card);"></div>
+      <div class="ht-pick-group">
+        <button class="ht-pick-btn" data-val="Spain">🇪🇸 Spain leading</button>
+        <button class="ht-pick-btn" data-val="Draw">🤝 Level at half-time</button>
+        <button class="ht-pick-btn" data-val="Argentina">🇦🇷 Argentina leading</button>
+      </div>
+      <p id="ht-pick-selected" style="text-align:center;font-size:0.85rem;color:var(--muted);margin-top:0.75rem;min-height:1.2rem"></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-primary" id="save-ht-result-btn">Save Pick</button>
+      <button class="btn btn-ghost" id="skip-ht-result-btn">Skip for now</button>
+    </div>
+  </div>
+</div>
+
 <!-- Rename user modal -->
 <div class="modal-overlay" id="rename-user-modal" style="display:none" role="dialog">
   <div class="modal-card" style="max-width:340px">
@@ -545,9 +570,9 @@
   window.firebaseFirestore = _firestore;
 </script>
 
-<script src="firebase-config.js?v=10"></script>
-<script src="matches.js?v=10"></script>
-<script src="app.js?v=10"></script>
+<script src="firebase-config.js?v=11"></script>
+<script src="matches.js?v=11"></script>
+<script src="app.js?v=11"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
