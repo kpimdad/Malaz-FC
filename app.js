@@ -1589,14 +1589,23 @@ function renderBonusSection() {
     <div class="admin-card">
       <div class="admin-card-head">⚽ Award Top Scoring Team Bonus (+${PTS_TOPTEAM} pts)</div>
       <div class="admin-card-body">
-        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Select the actual top scoring team to award ${PTS_TOPTEAM} pts to players who picked correctly.</p>
+        <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Select one or two teams if tied — all players who picked either team get +${PTS_TOPTEAM} pts.</p>
         <div class="admin-form">
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">Top Scoring Team</label>
-            <select id="bonus-topscorer-select" class="form-select">
-              <option value="">— Select team —</option>
-              ${getKnownTeams().map(t => `<option value="${t}">${t}</option>`).join('')}
-            </select>
+          <div style="display:flex;gap:0.5rem;flex:1">
+            <div class="form-group" style="margin-bottom:0;flex:1">
+              <label class="form-label">Top Scoring Team</label>
+              <select id="bonus-topscorer-select" class="form-select">
+                <option value="">— Select team —</option>
+                ${getKnownTeams().map(t => `<option value="${t}">${t}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;flex:1">
+              <label class="form-label">Joint (optional)</label>
+              <select id="bonus-topscorer-select2" class="form-select">
+                <option value="">— None —</option>
+                ${getKnownTeams().map(t => `<option value="${t}">${t}</option>`).join('')}
+              </select>
+            </div>
           </div>
           <button id="award-topscorer-btn" class="btn btn-primary" style="width:auto">Award Top Scorer Bonus</button>
         </div>
@@ -1654,13 +1663,18 @@ async function awardBonus(type) {
   if (!winner) { showToast('Select a winner first', 'error'); return; }
   const { pts, pickField, bonusField, label } = cfg;
 
-  if (!confirm(`Award +${pts} pts to all players who picked "${winner}" as ${label}?`)) return;
+  // Joint winner support (top scoring team only)
+  const sel2   = document.getElementById('bonus-topscorer-select2');
+  const winner2 = (type === 'topscorer' && sel2) ? sel2.value : '';
+  const winnerLabel = winner2 ? `"${winner}" or "${winner2}"` : `"${winner}"`;
+
+  if (!confirm(`Award +${pts} pts to all players who picked ${winnerLabel} as ${label}?`)) return;
 
   await fetchUsers();
   const batch = writeBatch(STATE.db);
   let count = 0;
   for (const u of STATE.users) {
-    if (u[pickField] === winner) {
+    if (u[pickField] === winner || (winner2 && u[pickField] === winner2)) {
       const newTotal = (u.totalPoints || 0) + pts;
       batch.update(doc(STATE.db, 'users', u.id), {
         totalPoints: newTotal,
@@ -1670,7 +1684,7 @@ async function awardBonus(type) {
     }
   }
   await batch.commit();
-  showToast(`✅ +${pts} pts awarded to ${count} player${count !== 1 ? 's' : ''} who picked ${winner}`, 'success');
+  showToast(`✅ +${pts} pts awarded to ${count} player${count !== 1 ? 's' : ''} who picked ${winnerLabel}`, 'success');
   renderAdminUsers();
 }
 
