@@ -539,6 +539,11 @@ select.form-input-lg {
 .lb-pts { font-size: 1.1rem; font-weight: 800; color: var(--gold); }
 .lb-pen-badge { font-size: 0.6rem; color: var(--muted); margin-top: 1px; text-align: center; }
 .lb-bonus-pts { font-weight: 700; color: var(--grass-lt); font-size: 0.85rem; }
+.lb-ht-pick { font-size: 1rem; line-height: 1; }
+.lb-ht-pick.ht-correct { filter: drop-shadow(0 0 4px rgba(63,185,80,0.5)); }
+.lb-ht-pick.ht-wrong { opacity: 0.35; }
+.lb-ht-pick.ht-none { color: var(--muted); font-size: 0.8rem; }
+.lb-th-ht { min-width: 2rem; }
 .lb-inline-compare { background: var(--surface2); border: 1px solid var(--border); color: var(--muted); border-radius: 5px; padding: 0.15rem 0.35rem; font-size: 0.7rem; cursor: pointer; }
 .lb-inline-compare:hover { color: var(--text); }
 

@@ -1118,6 +1118,7 @@ function renderLeaderboardTable(users) {
     const champ      = u.championPick    || '–';
     const topSc      = u.topScorerPick   || '–';
     const goldenBoot = u.goldenBootPick  || '–';
+    const htIcons    = { Spain: '🇪🇸', Draw: '🤝', Argentina: '🇦🇷' };
     const htLabels   = { Spain: '🇪🇸 Spain leading', Draw: '🤝 Level', Argentina: '🇦🇷 Argentina leading' };
     const htResult   = u.htResultPick ? (htLabels[u.htResultPick] || u.htResultPick) : '–';
     const champBonus      = u.champBonus       || 0;
@@ -1126,6 +1127,11 @@ function renderLeaderboardTable(users) {
     const htResultBonus   = u.htResultBonus    || 0;
     const totalBonus      = champBonus + topBonus + goldenBootBonus + htResultBonus;
     const penBadge        = pen > 0 ? `<div class="lb-pen-badge">⚽${pen > 1 ? `x${pen}` : ''}</div>` : '';
+    // HT pick cell: show emoji + correct/wrong styling
+    const htIcon     = u.htResultPick ? htIcons[u.htResultPick] : null;
+    const htPickCell = htIcon
+      ? `<span class="lb-ht-pick ${htResultBonus > 0 ? 'ht-correct' : 'ht-wrong'}">${htIcon}</span>`
+      : '<span class="lb-ht-pick ht-none">–</span>';
 
     const mainRow = `<tr class="lb-tr ${isMe ? 'lb-me' : ''} ${rankCls}" data-uid="${u.id}" data-nickname="${u.nickname}">
       <td class="lb-td-rank"><div class="lb-rank-num">${rankNum}</div>${moveHTML}</td>
@@ -1140,6 +1146,7 @@ function renderLeaderboardTable(users) {
       <td class="lb-td-num lb-td-played">${played}</td>
       <td class="lb-td-num lb-td-exact">${exact}</td>
       <td class="lb-td-num lb-td-result">${winner}</td>
+      <td class="lb-td-num lb-td-ht">${htPickCell}</td>
       <td class="lb-td-num lb-td-bonus">${totalBonus > 0 ? `<span class="lb-bonus-pts">+${totalBonus}</span>` : '–'}</td>
       <td class="lb-td-pts"><span class="lb-pts">${pts}</span>${penBadge}</td>
     </tr>`;
@@ -1148,7 +1155,7 @@ function renderLeaderboardTable(users) {
       ? `<button class="lb-drawer-compare" data-uid="${u.id}" data-nickname="${u.nickname}">Compare ↗</button>` : '';
 
     const drawerRow = `<tr class="lb-tr-drawer" data-uid="${u.id}">
-      <td colspan="9">
+      <td colspan="10">
         <div class="lb-drawer">
           <div class="lb-drawer-picks">
             <span class="lb-drawer-pick"><span class="lb-drawer-lbl">🏆 Winner pick</span>${champ}${champBonus ? ` <span class="bonus-awarded">+${champBonus}pts</span>` : ''}</span>
@@ -1175,6 +1182,7 @@ function renderLeaderboardTable(users) {
           <th class="lb-th-num">Played</th>
           <th class="lb-th-num">Exact</th>
           <th class="lb-th-num">Result</th>
+          <th class="lb-th-num lb-th-ht">HT</th>
           <th class="lb-th-num">Bonus</th>
           <th class="lb-th-pts">Pts</th>
         </tr>
