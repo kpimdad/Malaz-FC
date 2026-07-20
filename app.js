@@ -1996,6 +1996,39 @@ async function recalcAll() {
   } catch (e) { showToast('Error: ' + e.message, 'error'); console.error(e); }
 }
 
+async function rescoreFinalDay() {
+  if (!confirm('Re-score Final + 3rd Place predictions using Final Day scoring (25 exact / 15 result / 10 pen)?\n\nThis will also rebuild all totals.')) return;
+  showToast('Re-scoring Final Day…', 'info');
+  try {
+    const FINAL_DAY = [
+      { matchId: 'm103', stage: 'Third' },
+      { matchId: 'm104', stage: 'Final' },
+    ];
+    let predCount = 0;
+    for (const fm of FINAL_DAY) {
+      // Read result directly from Firestore — don't trust STATE.matches
+      const mSnap = await getDoc(doc(STATE.db, 'matches', fm.matchId));
+      if (!mSnap.exists()) { showToast(`No Firestore doc for ${fm.matchId}`, 'error'); continue; }
+      const { resultA: rA, resultB: rB, penWinner } = mSnap.data();
+      if (rA == null) { showToast(`${fm.matchId} has no result yet`, 'error'); continue; }
+
+      const pSnap = await getDocs(query(collection(STATE.db, 'predictions'), where('matchId', '==', fm.matchId)));
+      if (pSnap.empty) continue;
+      const batch = writeBatch(STATE.db);
+      pSnap.forEach(d => {
+        const p = d.data();
+        // Explicitly pass stage so 25/15/10 is used regardless of stored state
+        const pts = calculatePoints(p.predictedA, p.predictedB, rA, rB, p.penWinner, penWinner, fm.stage);
+        batch.update(d.ref, { pointsAwarded: pts });
+        predCount++;
+      });
+      await batch.commit();
+    }
+    await recalcAll();
+    showToast(`✅ Final Day re-scored (${predCount} predictions) — totals rebuilt`, 'success');
+  } catch (e) { showToast('Error: ' + e.message, 'error'); console.error(e); }
+}
+
 async function rescoreAllMatches() {
   if (!confirm(`Re-score ALL predictions for ALL completed matches with current scoring (${PTS_EXACT} / ${PTS_RESULT} / 0)? This overwrites stored points.`)) return;
   showToast('Re-scoring all matches…', 'info');
@@ -2406,6 +2439,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('fix-casing-btn').addEventListener('click', fixAllNameCasing);
   document.getElementById('recalc-match-btn').addEventListener('click', recalcMatch);
   document.getElementById('recalc-all-btn').addEventListener('click', recalcAll);
+  document.getElementById('rescore-final-day-btn').addEventListener('click', rescoreFinalDay);
   document.getElementById('rescore-all-btn').addEventListener('click', rescoreAllMatches);
   document.getElementById('backdate-save-all-btn').addEventListener('click', saveAllBackdatePredictions);
   document.getElementById('run-audit-btn').addEventListener('click', runIntegrityAudit);

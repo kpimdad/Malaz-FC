@@ -367,6 +367,7 @@
         <p style="font-size:0.875rem;color:var(--muted);margin-bottom:1rem">Recalculates every user's total from stored pointsAwarded values. Run after a batch rescore.</p>
         <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
           <button class="btn btn-secondary" id="recalc-all-btn" style="width:auto">Rebuild Point Totals</button>
+          <button class="btn btn-primary" id="rescore-final-day-btn" style="width:auto">⚽ Rescore Final Day (25/15/10)</button>
           <button class="btn btn-danger" id="rescore-all-btn" style="width:auto">Re-score All Matches</button>
         </div>
       </div>
@@ -586,9 +587,9 @@
   window.firebaseFirestore = _firestore;
 </script>
 
-<script src="firebase-config.js?v=16"></script>
-<script src="matches.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="firebase-config.js?v=17"></script>
+<script src="matches.js?v=17"></script>
+<script src="app.js?v=17"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
