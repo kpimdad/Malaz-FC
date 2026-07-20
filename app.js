@@ -1289,15 +1289,14 @@ async function generateShareCard() {
     // ── COLUMNS ──
     // Total usable: 2160 - 144 = 2016px
     const COL = {
-      rank:   { x: PAD,        w: 100 },  // 72
-      player: { x: PAD + 100,  w: 850 },  // 172
-      played: { x: PAD + 950,  w: 130 },  // 1022
-      exact:  { x: PAD + 1080, w: 140 },  // 1152
-      result: { x: PAD + 1220, w: 140 },  // 1292
-      pen:    { x: PAD + 1360, w: 125 },  // 1432
-      ht:     { x: PAD + 1485, w: 130 },  // 1557
-      bonus:  { x: PAD + 1615, w: 195 },  // 1687
-      pts:    { x: PAD + 1810, w: 178 },  // 1882 → right edge 2060 (100px right pad)
+      rank:   { x: PAD,        w: 100 },
+      player: { x: PAD + 100,  w: 980 },
+      played: { x: PAD + 1080, w: 140 },
+      exact:  { x: PAD + 1220, w: 150 },
+      result: { x: PAD + 1370, w: 150 },
+      pen:    { x: PAD + 1520, w: 140 },
+      bonus:  { x: PAD + 1660, w: 210 },
+      pts:    { x: PAD + 1870, w: 170 },
     };
     const cx = k => COL[k].x + COL[k].w / 2;
 
@@ -1306,7 +1305,7 @@ async function generateShareCard() {
     ctx.fillRect(0, HDR_H, W, TH_H);
 
     const TH = { rank:'#', player:'PLAYER', played:'PLAYED', exact:'EXACT',
-                 result:'RESULT', pen:'PEN', ht:'HT', bonus:'BONUS', pts:'PTS' };
+                 result:'RESULT', pen:'PEN', bonus:'BONUS', pts:'PTS' };
     ctx.font = 'bold 34px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = C.muted;
     ctx.textBaseline = 'middle';
@@ -1405,20 +1404,6 @@ async function generateShareCard() {
         ctx.font = '40px "Helvetica Neue", Arial, sans-serif';
         ctx.fillStyle = C.muted;
         ctx.fillText('–', cx('pen'), midY);
-      }
-
-      // HT pick
-      const htIcon = u.htResultPick ? HT_EMOJI[u.htResultPick] : null;
-      if (htIcon) {
-        ctx.font         = '44px Arial';
-        ctx.fillStyle    = C.muted;
-        ctx.globalAlpha  = htBonus > 0 ? 1 : 0.35;
-        ctx.fillText(htIcon, cx('ht'), midY);
-        ctx.globalAlpha  = 1;
-      } else {
-        ctx.font      = '40px "Helvetica Neue", Arial, sans-serif';
-        ctx.fillStyle = C.muted;
-        ctx.fillText('–', cx('ht'), midY);
       }
 
       // Bonus total
