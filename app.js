@@ -1215,6 +1215,266 @@ function renderLeaderboardTable(users) {
   });
 }
 
+// ─────────────────────────────────────────────────────
+// SHARE CARD (4K canvas export)
+// ─────────────────────────────────────────────────────
+async function generateShareCard() {
+  const btn = document.getElementById('lb-share-btn');
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+  try {
+    const players = STATE.users.slice(0, 25);
+    if (!players.length) { showToast('No data yet', 'error'); return; }
+
+    // ── Layout constants ──
+    const W       = 2160;
+    const PAD     = 72;
+    const HDR_H   = 280;  // title block
+    const TH_H    = 80;   // table header row
+    const ROW_H   = 88;
+    const FTR_H   = 130;
+    const H = HDR_H + TH_H + players.length * ROW_H + FTR_H;
+
+    const canvas = document.createElement('canvas');
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // ── Palette ──
+    const C = {
+      bg:      '#0d1117', cardBg: '#161b22', border: '#30363d',
+      text:    '#e6edf3', muted:  '#8b949e', gold:   '#d4af37',
+      silver:  '#a8a9ad', bronze: '#cd7f32', green:  '#3fb950',
+      accent:  '#58a6ff',
+    };
+
+    // Background
+    ctx.fillStyle = C.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── HEADER ──
+    // Top gold bar
+    ctx.fillStyle = C.gold;
+    ctx.fillRect(0, 0, W, 9);
+
+    // Title
+    ctx.font = 'bold 90px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = C.text;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+    ctx.fillText('MALAZ FC', PAD, 40);
+
+    ctx.font = '46px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = C.muted;
+    ctx.fillText('FIFA World Cup 2026  ·  Final Standings', PAD, 156);
+
+    // Date top-right
+    const dateStr = new Date().toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+    ctx.font = '42px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = C.muted;
+    ctx.textAlign = 'right';
+    ctx.fillText(dateStr, W - PAD, 48);
+    ctx.textAlign = 'left';
+
+    // Divider
+    ctx.strokeStyle = C.border;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(PAD, HDR_H - 20);
+    ctx.lineTo(W - PAD, HDR_H - 20);
+    ctx.stroke();
+
+    // ── COLUMN POSITIONS ──
+    // x = left edge of column cell; for numeric cols we'll center within (x, x+w)
+    const COL = {
+      rank:   { x: PAD,         w: 110  },
+      player: { x: PAD + 130,   w: 810  },
+      played: { x: PAD + 990,   w: 170, center: true },
+      exact:  { x: PAD + 1175,  w: 170, center: true },
+      result: { x: PAD + 1360,  w: 170, center: true },
+      pen:    { x: PAD + 1545,  w: 155, center: true },
+      bonus:  { x: PAD + 1715,  w: 190, center: true },
+      pts:    { x: PAD + 1920,  w: 168, center: true },
+    };
+    const cx = col => COL[col].x + COL[col].w / 2; // center X
+
+    // ── TABLE HEADER ROW ──
+    const thy = HDR_H;
+    ctx.fillStyle = '#1c2128';
+    ctx.fillRect(0, thy, W, TH_H);
+
+    const TH_LABELS = {
+      rank: '#', player: 'PLAYER', played: 'PLAYED',
+      exact: 'EXACT', result: 'RESULT', pen: 'PEN',
+      bonus: 'BONUS', pts: 'PTS',
+    };
+    ctx.font = 'bold 36px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = C.muted;
+    ctx.textBaseline = 'middle';
+    const thMid = thy + TH_H / 2;
+
+    Object.keys(TH_LABELS).forEach(k => {
+      if (k === 'rank' || k === 'player') {
+        ctx.textAlign = 'left';
+        ctx.fillText(TH_LABELS[k], COL[k].x, thMid);
+      } else {
+        ctx.textAlign = 'center';
+        ctx.fillText(TH_LABELS[k], cx(k), thMid);
+      }
+    });
+
+    // ── DATA ROWS ──
+    const MEDAL = ['🥇','🥈','🥉'];
+    function measureAndClip(ctx, text, maxW) {
+      if (ctx.measureText(text).width <= maxW) return text;
+      let t = text;
+      while (t.length > 0 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+      return t + '…';
+    }
+
+    players.forEach((u, i) => {
+      const pts         = u.totalPoints        || 0;
+      const exact       = u.computedExact      || 0;
+      const result      = u.computedWinner     || 0;
+      const pen         = u.computedPen        || 0;
+      const played      = u.predictionsSubmitted || 0;
+      const totalBonus  = (u.champBonus || 0) + (u.topScorerBonus || 0) + (u.goldenBootBonus || 0) + (u.htResultBonus || 0);
+
+      const ry   = HDR_H + TH_H + i * ROW_H;
+      const midY = ry + ROW_H / 2;
+
+      // Row background (alternating)
+      ctx.fillStyle = i % 2 === 0 ? '#161b22' : '#0d1117';
+      ctx.fillRect(0, ry, W, ROW_H);
+
+      // Medal row tints
+      if (i === 0) { ctx.fillStyle = 'rgba(212,175,55,0.09)';  ctx.fillRect(0, ry, W, ROW_H); }
+      if (i === 1) { ctx.fillStyle = 'rgba(168,169,173,0.07)'; ctx.fillRect(0, ry, W, ROW_H); }
+      if (i === 2) { ctx.fillStyle = 'rgba(205,127,50,0.07)';  ctx.fillRect(0, ry, W, ROW_H); }
+
+      // Left accent bar for top 3
+      if (i < 3) {
+        ctx.fillStyle = [C.gold, C.silver, C.bronze][i];
+        ctx.fillRect(0, ry, 6, ROW_H);
+      }
+
+      ctx.textBaseline = 'middle';
+
+      // Rank
+      ctx.textAlign = 'left';
+      if (i < 3) {
+        ctx.font = '52px Arial';
+        ctx.fillText(MEDAL[i], COL.rank.x, midY);
+      } else {
+        ctx.font = 'bold 42px "Helvetica Neue", Arial, sans-serif';
+        ctx.fillStyle = C.muted;
+        ctx.fillText(String(i + 1), COL.rank.x, midY);
+      }
+
+      // Player name (clipped)
+      const maxNameW = COL.player.w;
+      ctx.font = `bold 44px "Helvetica Neue", Arial, sans-serif`;
+      ctx.fillStyle = i === 0 ? C.gold : C.text;
+      ctx.textAlign = 'left';
+      const name = measureAndClip(ctx, u.nickname || '?', maxNameW);
+      ctx.fillText(name, COL.player.x, midY);
+
+      // Played
+      ctx.font = '42px "Helvetica Neue", Arial, sans-serif';
+      ctx.fillStyle = C.muted;
+      ctx.textAlign = 'center';
+      ctx.fillText(String(played), cx('played'), midY);
+
+      // Exact
+      ctx.fillStyle = exact > 0 ? C.green : C.muted;
+      ctx.fillText(String(exact), cx('exact'), midY);
+
+      // Result
+      ctx.fillStyle = result > 0 ? C.accent : C.muted;
+      ctx.fillText(String(result), cx('result'), midY);
+
+      // Pen
+      ctx.fillStyle = C.muted;
+      if (pen > 0) {
+        ctx.font = '40px Arial, sans-serif';
+        ctx.fillText(pen > 1 ? `⚽×${pen}` : '⚽', cx('pen'), midY);
+      } else {
+        ctx.font = '42px "Helvetica Neue", Arial, sans-serif';
+        ctx.fillText('–', cx('pen'), midY);
+      }
+
+      // Bonus
+      ctx.font = 'bold 44px "Helvetica Neue", Arial, sans-serif';
+      ctx.fillStyle = totalBonus > 0 ? C.gold : C.muted;
+      ctx.fillText(totalBonus > 0 ? `+${totalBonus}` : '–', cx('bonus'), midY);
+
+      // Points
+      ctx.font = `bold 52px "Helvetica Neue", Arial, sans-serif`;
+      ctx.fillStyle = i === 0 ? C.gold : C.text;
+      ctx.fillText(String(pts), cx('pts'), midY);
+
+      // Row divider
+      if (i > 0) {
+        ctx.strokeStyle = C.border;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(PAD, ry);
+        ctx.lineTo(W - PAD, ry);
+        ctx.stroke();
+      }
+    });
+
+    // ── FOOTER ──
+    const fy = HDR_H + TH_H + players.length * ROW_H;
+    ctx.strokeStyle = C.border;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(PAD, fy + 30);
+    ctx.lineTo(W - PAD, fy + 30);
+    ctx.stroke();
+
+    ctx.font = '36px "Helvetica Neue", Arial, sans-serif';
+    ctx.fillStyle = C.muted;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillText('kpimdad.github.io/Malaz-FC', PAD, fy + 82);
+    ctx.textAlign = 'right';
+    ctx.fillText(`Exact ${PTS_EXACT}pts  ·  Result ${PTS_RESULT}pts  ·  Final ${PTS_EXACT_FINAL}/${PTS_RESULT_FINAL}pts`, W - PAD, fy + 82);
+
+    // Bottom gold bar
+    ctx.fillStyle = C.gold;
+    ctx.fillRect(0, H - 9, W, 9);
+
+    // ── EXPORT ──
+    canvas.toBlob(async blob => {
+      const file = new File([blob], `malaz-fc-standings-${new Date().toISOString().slice(0,10)}.png`, { type: 'image/png' });
+      try {
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Malaz FC — World Cup 2026 Standings' });
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a   = document.createElement('a');
+          a.href    = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 5000);
+          showToast('📸 Card saved — share to WhatsApp!', 'success');
+        }
+      } catch (e) {
+        if (e.name !== 'AbortError') showToast('Saved to downloads', 'success');
+      }
+    }, 'image/png');
+
+  } catch (e) {
+    console.error('Share card error:', e);
+    showToast('Failed to generate card', 'error');
+  } finally {
+    if (btn) { btn.textContent = '📸 Share'; btn.disabled = false; }
+  }
+}
+
 // ═══════════════════════════════════════════════════════
 // MY PREDICTIONS VIEW
 // ═══════════════════════════════════════════════════════
@@ -2144,6 +2404,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Leaderboard updated label click → refresh
   document.getElementById('leaderboard-updated').addEventListener('click', initLeaderboard);
+
+  // Share card
+  document.getElementById('lb-share-btn')?.addEventListener('click', generateShareCard);
 
   // Boot
   showView('view-login');

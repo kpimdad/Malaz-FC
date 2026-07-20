@@ -501,6 +501,9 @@ select.form-input-lg {
 .lb-heading { font-size: 1.1rem; font-weight: 700; }
 .lb-refresh-btn { background: none; border: 1px solid var(--border); color: var(--muted); padding: 0.3rem 0.6rem; border-radius: 6px; font-size: 0.72rem; cursor: pointer; }
 .lb-refresh-btn:hover { color: var(--text); }
+.lb-share-btn { background: var(--gold); border: none; color: #0d1117; padding: 0.3rem 0.75rem; border-radius: 6px; font-size: 0.78rem; font-weight: 700; cursor: pointer; letter-spacing: 0.01em; }
+.lb-share-btn:hover { opacity: 0.88; }
+.lb-share-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 #leaderboard-body { padding: 0.75rem 0.5rem; }
 
 .lb-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }

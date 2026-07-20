@@ -227,7 +227,10 @@
 <div class="view" id="view-leaderboard">
   <div class="lb-topbar">
     <h2 class="lb-heading">Leaderboard</h2>
-    <button class="lb-refresh-btn" id="leaderboard-updated">Tap to refresh</button>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <button class="lb-share-btn" id="lb-share-btn">📸 Share</button>
+      <button class="lb-refresh-btn" id="leaderboard-updated">Tap to refresh</button>
+    </div>
   </div>
   <div id="leaderboard-body">
     <div class="loading-center"><div class="spinner"></div></div>
@@ -583,9 +586,9 @@
   window.firebaseFirestore = _firestore;
 </script>
 
-<script src="firebase-config.js?v=14"></script>
-<script src="matches.js?v=14"></script>
-<script src="app.js?v=14"></script>
+<script src="firebase-config.js?v=15"></script>
+<script src="matches.js?v=15"></script>
+<script src="app.js?v=15"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js'));
