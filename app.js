@@ -1414,7 +1414,15 @@ async function generateShareCard() {
       // Points
       ctx.font      = 'bold 50px "Helvetica Neue", Arial, sans-serif';
       ctx.fillStyle = i === 0 ? C.gold : C.text;
-      ctx.fillText(String(pts), cx('pts'), midY);
+      const ptsOffsetY = pen > 0 ? midY - 10 : midY;
+      ctx.fillText(String(pts), cx('pts'), ptsOffsetY);
+      // Pen badge below pts
+      if (pen > 0) {
+        ctx.font      = '26px Arial';
+        ctx.fillStyle = C.muted;
+        ctx.textAlign = 'center';
+        ctx.fillText(pen > 1 ? `⚽×${pen}` : '⚽', cx('pts'), midY + 22);
+      }
 
       // ── PICKS SUB-ROW ──
       const pickStart = COL.player.x;
