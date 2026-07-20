@@ -1290,13 +1290,12 @@ async function generateShareCard() {
     // Total usable: 2160 - 144 = 2016px
     const COL = {
       rank:   { x: PAD,        w: 100 },
-      player: { x: PAD + 100,  w: 980 },
-      played: { x: PAD + 1080, w: 140 },
-      exact:  { x: PAD + 1220, w: 150 },
-      result: { x: PAD + 1370, w: 150 },
-      pen:    { x: PAD + 1520, w: 140 },
-      bonus:  { x: PAD + 1660, w: 210 },
-      pts:    { x: PAD + 1870, w: 170 },
+      player: { x: PAD + 100,  w: 1060 },
+      played: { x: PAD + 1160, w: 150 },
+      exact:  { x: PAD + 1310, w: 160 },
+      result: { x: PAD + 1470, w: 160 },
+      bonus:  { x: PAD + 1630, w: 230 },
+      pts:    { x: PAD + 1860, w: 178 },
     };
     const cx = k => COL[k].x + COL[k].w / 2;
 
@@ -1305,7 +1304,7 @@ async function generateShareCard() {
     ctx.fillRect(0, HDR_H, W, TH_H);
 
     const TH = { rank:'#', player:'PLAYER', played:'PLAYED', exact:'EXACT',
-                 result:'RESULT', pen:'PEN', bonus:'BONUS', pts:'PTS' };
+                 result:'RESULT', bonus:'BONUS', pts:'PTS' };
     ctx.font = 'bold 34px "Helvetica Neue", Arial, sans-serif';
     ctx.fillStyle = C.muted;
     ctx.textBaseline = 'middle';
@@ -1395,17 +1394,6 @@ async function generateShareCard() {
       ctx.fillStyle = result > 0 ? C.accent : C.muted;
       ctx.fillText(String(result), cx('result'), midY);
 
-      // Pen
-      if (pen > 0) {
-        ctx.font = '38px Arial';
-        ctx.fillStyle = C.muted;
-        ctx.fillText(pen > 1 ? `⚽×${pen}` : '⚽', cx('pen'), midY);
-      } else {
-        ctx.font = '40px "Helvetica Neue", Arial, sans-serif';
-        ctx.fillStyle = C.muted;
-        ctx.fillText('–', cx('pen'), midY);
-      }
-
       // Bonus total
       ctx.font      = 'bold 42px "Helvetica Neue", Arial, sans-serif';
       ctx.fillStyle = totalBonus > 0 ? C.gold : C.muted;
@@ -1431,7 +1419,7 @@ async function generateShareCard() {
       const picks = [
         { icon:'🏆', val: u.championPick   || '–', ok: champBonus > 0 },
         { icon:'⚽', val: u.topScorerPick  || '–', ok: topBonus   > 0 },
-        { icon:'👟', val: u.goldenBootPick || '–', ok: bootBonus  > 0 },
+        { icon:'👟', val: (u.goldenBootPick || '–').replace(/\s*\(.*?\)/g, ''), ok: bootBonus  > 0 },
         { icon:'⏱️', val: u.htResultPick ? (HT_EMOJI[u.htResultPick] || u.htResultPick) : '–', ok: htBonus > 0 },
       ];
 
